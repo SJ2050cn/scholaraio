@@ -237,6 +237,15 @@ class TestCliHelpLocalization:
         assert "--out-dir" in publish_help
         assert "--symlink" in publish_help
 
+    def test_gui_help_exposes_read_only_local_webui(self):
+        parser = cli._build_parser()
+        gui_help = parser._subparsers._group_actions[0].choices["gui"].format_help()
+
+        assert "Start the local read-only library WebUI" in gui_help
+        assert "--host" in gui_help
+        assert "--port" in gui_help
+        assert "--no-open" in gui_help
+
     def test_style_list_descriptions_are_english(self, capsys):
         cli.cmd_style(Namespace(style_sub="list"), _build_config({}, Path.cwd()))
 
