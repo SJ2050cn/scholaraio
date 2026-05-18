@@ -93,6 +93,17 @@ def _main_issue_map(papers_dir: Path) -> dict[str, list[dict]]:
     return by_dir
 
 
+def _invalid_json_issues(paper_id: str, exc: Exception) -> list[dict]:
+    return [
+        {
+            "paper_id": paper_id,
+            "severity": "error",
+            "rule": "invalid_json",
+            "message": f"Failed to parse JSON: {exc}",
+        }
+    ]
+
+
 def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
     paper_id = meta.get("id") or paper_dir.name
     toc = meta.get("toc") or []
@@ -130,14 +141,7 @@ def build_main_library_view(cfg: Config) -> dict:
         try:
             meta = read_meta(paper_dir)
         except Exception as exc:
-            issues = [
-                {
-                    "paper_id": paper_dir.name,
-                    "severity": "error",
-                    "rule": "invalid_json",
-                    "message": f"Failed to parse JSON: {exc}",
-                }
-            ]
+            issues = _invalid_json_issues(paper_dir.name, exc)
             meta = {"id": paper_dir.name, "title": paper_dir.name}
         else:
             issues = issue_map.get(paper_dir.name, [])
@@ -162,9 +166,13 @@ def _find_main_paper(cfg: Config, paper_id: str) -> tuple[Path, dict, list[dict]
     for paper_dir in iter_paper_dirs(cfg.papers_dir):
         try:
             meta = read_meta(paper_dir)
-        except (ValueError, FileNotFoundError):
+        except (ValueError, FileNotFoundError) as exc:
             if paper_id == paper_dir.name:
-                raise KeyError(paper_id) from None
+                return (
+                    paper_dir,
+                    {"id": paper_dir.name, "title": paper_dir.name},
+                    _invalid_json_issues(paper_dir.name, exc),
+                )
             continue
         current_id = meta.get("id") or paper_dir.name
         if paper_id in {current_id, paper_dir.name}:

@@ -191,6 +191,25 @@ def test_main_library_detail_skips_malformed_metadata_before_requested_paper(tmp
     assert detail["abstract"] == "Valid abstract."
 
 
+def test_main_library_detail_returns_fallback_for_malformed_metadata_row(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import get_main_paper_detail
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    bad_dir = papers_root / "Bad-2026-Broken"
+    bad_dir.mkdir(parents=True)
+    (bad_dir / "meta.json").write_text("{not json", encoding="utf-8")
+    (bad_dir / "Bad-2026-Broken.pdf").write_bytes(b"%PDF-bad")
+    cfg = _build_config({}, tmp_path)
+
+    detail = get_main_paper_detail(cfg, "Bad-2026-Broken")
+
+    assert detail["paper_id"] == "Bad-2026-Broken"
+    assert detail["title"] == "Bad-2026-Broken"
+    assert detail["has_pdf"] is True
+    assert detail["issue_counts"]["error"] == 1
+    assert detail["issues"][0]["rule"] == "invalid_json"
+
+
 def test_proceedings_view_lists_child_papers_by_volume(tmp_path: Path) -> None:
     from scholaraio.services.library_view import build_proceedings_library_view
 

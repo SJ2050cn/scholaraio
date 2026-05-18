@@ -91,6 +91,18 @@ def test_library_view_server_serves_static_console_shell(tmp_path):
         server.server_close()
 
 
+def test_library_view_static_assets_live_inside_package() -> None:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    static_dir = _static_dir()
+
+    assert static_dir.is_dir()
+    assert static_dir.parent == Path(__file__).resolve().parents[1] / "scholaraio" / "interfaces" / "cli"
+    assert (static_dir / "index.html").is_file()
+    assert (static_dir / "app.js").is_file()
+    assert (static_dir / "styles.css").is_file()
+
+
 def test_library_view_server_serves_main_pdf_inline(tmp_path):
     from scholaraio.interfaces.cli.gui import create_library_view_server
 

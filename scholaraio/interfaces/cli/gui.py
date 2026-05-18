@@ -30,7 +30,7 @@ def _ui(msg: str = "") -> None:
 
 
 def _static_dir() -> Path:
-    return Path(__file__).resolve().parents[3] / "gui" / "library-view"
+    return Path(__file__).resolve().parent / "library-view"
 
 
 def _json_bytes(payload: object) -> bytes:
