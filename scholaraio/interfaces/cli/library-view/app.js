@@ -141,14 +141,15 @@ function buildOptions(select, values, emptyLabel) {
     select.appendChild(option);
   }
   select.value = values.includes(current) ? current : "";
+  return select.value;
 }
 
 function renderFilters() {
   const rows = activeRows();
   const types = [...new Set(rows.map((row) => row.paper_type).filter(Boolean))].sort();
   const volumes = [...new Set(rows.map((row) => row.proceeding_title).filter(Boolean))].sort();
-  buildOptions(els.typeFilter, types, "All types");
-  buildOptions(els.volumeFilter, volumes, "All volumes");
+  state.filters.type = buildOptions(els.typeFilter, types, "All types");
+  state.filters.volume = buildOptions(els.volumeFilter, volumes, "All volumes");
   const isProceedings = state.tab === "proceedings";
   els.volumeFilter.hidden = !isProceedings;
   els.volumeFilterLabel.hidden = !isProceedings;
@@ -398,7 +399,9 @@ function switchTab(tab) {
   document.querySelectorAll(".tab").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === tab);
   });
+  state.filters.type = "";
   state.filters.volume = "";
+  els.typeFilter.value = "";
   els.volumeFilter.value = "";
   showRecords();
   renderDetail(null);

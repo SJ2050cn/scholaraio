@@ -229,6 +229,30 @@ def test_proceedings_view_lists_child_papers_by_volume(tmp_path: Path) -> None:
     assert row["has_md"] is True
 
 
+def test_proceedings_view_isolates_malformed_child_metadata(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import build_proceedings_library_view
+
+    proceedings_root = tmp_path / "data" / "libraries" / "proceedings"
+    _write_proceedings_child(proceedings_root)
+    bad_dir = proceedings_root / "Proc-2026-Test" / "papers" / "Broken-2026-Child"
+    bad_dir.mkdir(parents=True)
+    (bad_dir / "meta.json").write_text("{not json", encoding="utf-8")
+    (bad_dir / "Broken-2026-Child.pdf").write_bytes(b"%PDF-bad")
+    cfg = _build_config({}, tmp_path)
+
+    view = build_proceedings_library_view(cfg)
+
+    rows = {row["paper_id"]: row for row in view["papers"]}
+    assert set(rows) == {"proc-paper-1", "Broken-2026-Child"}
+    assert rows["proc-paper-1"]["title"] == "Wave proceedings paper"
+    assert rows["Broken-2026-Child"]["title"] == "Broken-2026-Child"
+    assert rows["Broken-2026-Child"]["proceeding_title"] == "Proceedings of Tests"
+    assert rows["Broken-2026-Child"]["has_pdf"] is True
+    assert rows["Broken-2026-Child"]["issue_counts"]["error"] == 1
+    assert rows["Broken-2026-Child"]["issues"][0]["rule"] == "invalid_json"
+    assert view["issue_totals"]["error"] == 1
+
+
 def test_proceedings_detail_returns_volume_context_without_commands(tmp_path: Path) -> None:
     from scholaraio.services.library_view import get_proceedings_paper_detail
 

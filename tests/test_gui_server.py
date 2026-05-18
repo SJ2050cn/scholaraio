@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+import pytest
 
 from scholaraio.core.config import _build_config
 
@@ -101,6 +105,75 @@ def test_library_view_static_assets_live_inside_package() -> None:
     assert (static_dir / "index.html").is_file()
     assert (static_dir / "app.js").is_file()
     assert (static_dir / "styles.css").is_file()
+
+
+def test_library_view_tab_switch_resets_stale_type_filter() -> None:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior regression")
+    app_js = (_static_dir() / "app.js").as_posix()
+    script = f"""
+const fs = require("fs");
+const vm = require("vm");
+
+function element(id) {{
+  return {{
+    id,
+    dataset: {{}},
+    value: "",
+    checked: false,
+    hidden: false,
+    textContent: "",
+    className: "",
+    classList: {{ toggle() {{}} }},
+    appendChild() {{}},
+    append() {{}},
+    removeAttribute() {{}},
+    addEventListener() {{}},
+  }};
+}}
+
+const elements = new Map();
+const tabs = ["main", "proceedings"].map((tab) => {{
+  const el = element(`tab-${{tab}}`);
+  el.dataset.tab = tab;
+  return el;
+}});
+const document = {{
+  getElementById(id) {{
+    if (!elements.has(id)) elements.set(id, element(id));
+    return elements.get(id);
+  }},
+  createElement(tag) {{
+    return element(tag);
+  }},
+  querySelectorAll(selector) {{
+    if (selector === ".tab") return tabs;
+    return [];
+  }},
+}};
+const context = {{
+  document,
+  fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0 }}) }}),
+  setInterval: () => 1,
+  clearInterval: () => {{}},
+  console,
+}};
+const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
+vm.runInNewContext(`${{code}}
+state.filters.type = "journal-article";
+els.typeFilter.value = "journal-article";
+switchTab("proceedings");
+globalThis.__result = {{ type: state.filters.type, select: els.typeFilter.value }};
+`, context);
+console.log(JSON.stringify(context.__result));
+"""
+
+    result = subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+    assert json.loads(result.stdout) == {"type": "", "select": ""}
 
 
 def test_library_view_server_serves_main_pdf_inline(tmp_path):

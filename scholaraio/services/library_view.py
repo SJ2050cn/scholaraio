@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 from scholaraio.services.audit import Issue, audit_papers
 from scholaraio.stores.papers import best_citation, find_pdf, iter_paper_dirs, read_meta
-from scholaraio.stores.proceedings import iter_proceedings_papers, read_json
+from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -194,17 +194,23 @@ def get_main_paper_detail(cfg: Config, paper_id: str) -> dict:
     }
 
 
-def _proceedings_row(cfg: Config, row: dict) -> dict:
+def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues: list[dict] | None = None) -> dict:
     paper_dir = cfg.proceedings_dir / row["proceeding_dir"] / "papers" / row["dir_name"]
     meta_path = paper_dir / "meta.json"
-    meta = read_json(meta_path) if meta_path.exists() else {}
-    toc = meta.get("toc") or []
     paper_id = row.get("paper_id") or row.get("dir_name") or ""
+    row_issues = list(issues or [])
+    if meta is None:
+        try:
+            meta = read_json(meta_path) if meta_path.exists() else {}
+        except (ValueError, FileNotFoundError) as exc:
+            meta = {"id": paper_id, "title": paper_id}
+            row_issues.extend(_invalid_json_issues(paper_id, exc))
+    toc = meta.get("toc") or []
     raw_type = row.get("paper_type") or meta.get("paper_type") or ""
     return {
         "paper_id": paper_id,
         "dir_name": row.get("dir_name") or "",
-        "title": row.get("title") or "",
+        "title": row.get("title") or meta.get("title") or "",
         "authors": meta.get("authors") or [],
         "authors_text": row.get("authors") or _authors_text(meta.get("authors") or []),
         "year": row.get("year") or "",
@@ -219,34 +225,83 @@ def _proceedings_row(cfg: Config, row: dict) -> dict:
         "has_abstract": _bool_has_text(row.get("abstract")),
         "has_l3": _bool_has_text(row.get("conclusion")),
         "toc_count": len(toc) if isinstance(toc, list) else 0,
-        "issue_counts": _empty_issue_counts(),
-        "issues": [],
+        "issue_counts": _issue_counts(row_issues),
+        "issues": row_issues,
         **_pdf_fields("proceedings", paper_dir, paper_id),
     }
 
 
+def _iter_proceedings_view_records(cfg: Config):
+    for proceeding_dir in iter_proceedings_dirs(cfg.proceedings_dir):
+        meta_path = proceeding_dir / "meta.json"
+        papers_dir = proceeding_dir / "papers"
+        if not meta_path.exists() or not papers_dir.is_dir():
+            continue
+
+        proceeding_issues: list[dict] = []
+        try:
+            proceeding_meta = read_json(meta_path)
+        except (ValueError, FileNotFoundError) as exc:
+            proceeding_meta = {"id": proceeding_dir.name, "title": proceeding_dir.name}
+            proceeding_issues = _invalid_json_issues(proceeding_dir.name, exc)
+        proceeding_title = proceeding_meta.get("title") or proceeding_dir.name
+        proceeding_id = proceeding_meta.get("id") or proceeding_dir.name
+
+        for paper_dir in sorted(papers_dir.iterdir()):
+            if not paper_dir.is_dir():
+                continue
+            paper_meta_path = paper_dir / "meta.json"
+            if not paper_meta_path.exists():
+                continue
+            issues = list(proceeding_issues)
+            try:
+                paper_meta = read_json(paper_meta_path)
+            except (ValueError, FileNotFoundError) as exc:
+                paper_meta = {"id": paper_dir.name, "title": paper_dir.name}
+                issues.extend(_invalid_json_issues(paper_dir.name, exc))
+            row = {
+                "paper_id": paper_meta.get("id") or paper_dir.name,
+                "title": paper_meta.get("title") or "",
+                "authors": ", ".join(paper_meta.get("authors") or []),
+                "year": str(paper_meta.get("year") or ""),
+                "journal": paper_meta.get("journal") or "",
+                "abstract": paper_meta.get("abstract") or "",
+                "conclusion": paper_meta.get("l3_conclusion") or "",
+                "doi": paper_meta.get("doi") or "",
+                "paper_type": paper_meta.get("paper_type") or "",
+                "citation_count": "",
+                "md_path": str((paper_dir / "paper.md").resolve()) if (paper_dir / "paper.md").exists() else "",
+                "dir_name": paper_dir.name,
+                "proceeding_id": proceeding_id,
+                "proceeding_dir": proceeding_dir.name,
+                "proceeding_title": paper_meta.get("proceeding_title") or proceeding_title,
+            }
+            yield _proceedings_row(cfg, row, meta=paper_meta, issues=issues), paper_dir, paper_meta
+
+
 def build_proceedings_library_view(cfg: Config) -> dict:
     """Return a live read-only table view for configured proceedings child papers."""
-    rows = [_proceedings_row(cfg, row) for row in iter_proceedings_papers(cfg.proceedings_dir)]
+    rows = [row for row, _paper_dir, _meta in _iter_proceedings_view_records(cfg)]
     rows.sort(key=lambda row: (str(row.get("year") or ""), row.get("title") or ""), reverse=True)
     volumes = sorted({row["proceeding_title"] for row in rows if row.get("proceeding_title")})
+    totals = _empty_issue_counts()
+    for row in rows:
+        for key, value in row["issue_counts"].items():
+            totals[key] += value
     return {
         "source": "proceedings",
         "root": str(cfg.proceedings_dir),
         "generated_at": _now_iso(),
         "total": len(rows),
+        "issue_totals": totals,
         "volumes": volumes,
         "papers": rows,
     }
 
 
 def _find_proceedings_row(cfg: Config, paper_id: str) -> tuple[dict, Path, dict]:
-    for raw in iter_proceedings_papers(cfg.proceedings_dir):
-        row = _proceedings_row(cfg, raw)
+    for row, paper_dir, meta in _iter_proceedings_view_records(cfg):
         if paper_id in {row["paper_id"], row["dir_name"]}:
-            paper_dir = cfg.proceedings_dir / row["proceeding_dir"] / "papers" / row["dir_name"]
-            meta_path = paper_dir / "meta.json"
-            meta = read_json(meta_path) if meta_path.exists() else {}
             return row, paper_dir, meta
     raise KeyError(paper_id)
 
