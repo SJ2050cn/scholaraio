@@ -119,6 +119,19 @@ def _invalid_json_issues(paper_id: str, exc: Exception) -> list[dict]:
     ]
 
 
+def _metadata_read_issues(paper_id: str, exc: Exception) -> list[dict]:
+    if isinstance(exc, ValueError):
+        return _invalid_json_issues(paper_id, exc)
+    return [
+        {
+            "paper_id": paper_id,
+            "severity": "error",
+            "rule": "metadata_unreadable",
+            "message": f"Failed to read metadata: {exc}",
+        }
+    ]
+
+
 def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
     paper_id = meta.get("id") or paper_dir.name
     toc = meta.get("toc") or []
@@ -155,8 +168,8 @@ def build_main_library_view(cfg: Config) -> dict:
     for paper_dir in iter_paper_dirs(papers_dir):
         try:
             meta = read_meta(paper_dir)
-        except Exception as exc:
-            issues = _invalid_json_issues(paper_dir.name, exc)
+        except (ValueError, OSError) as exc:
+            issues = _metadata_read_issues(paper_dir.name, exc)
             meta = {"id": paper_dir.name, "title": paper_dir.name}
         else:
             issues = issue_map.get(paper_dir.name, [])
@@ -181,12 +194,12 @@ def _find_main_paper(cfg: Config, paper_id: str, *, include_issues: bool = True)
     for paper_dir in iter_paper_dirs(cfg.papers_dir):
         try:
             meta = read_meta(paper_dir)
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, OSError) as exc:
             if paper_id == paper_dir.name:
                 return (
                     paper_dir,
                     {"id": paper_dir.name, "title": paper_dir.name},
-                    _invalid_json_issues(paper_dir.name, exc),
+                    _metadata_read_issues(paper_dir.name, exc),
                 )
             continue
         current_id = meta.get("id") or paper_dir.name
@@ -217,9 +230,9 @@ def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues
     if meta is None:
         try:
             meta = read_json(meta_path) if meta_path.exists() else {}
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, OSError) as exc:
             meta = {"id": paper_id, "title": paper_id}
-            row_issues.extend(_invalid_json_issues(paper_id, exc))
+            row_issues.extend(_metadata_read_issues(paper_id, exc))
     toc = meta.get("toc") or []
     raw_type = row.get("paper_type") or meta.get("paper_type") or ""
     return {
@@ -256,13 +269,17 @@ def _iter_proceedings_view_records(cfg: Config):
         proceeding_issues: list[dict] = []
         try:
             proceeding_meta = read_json(meta_path)
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, OSError) as exc:
             proceeding_meta = {"id": proceeding_dir.name, "title": proceeding_dir.name}
-            proceeding_issues = _invalid_json_issues(proceeding_dir.name, exc)
+            proceeding_issues = _metadata_read_issues(proceeding_dir.name, exc)
         proceeding_title = proceeding_meta.get("title") or proceeding_dir.name
         proceeding_id = proceeding_meta.get("id") or proceeding_dir.name
 
-        for paper_dir in sorted(papers_dir.iterdir()):
+        try:
+            paper_dirs = sorted(papers_dir.iterdir())
+        except OSError:
+            continue
+        for paper_dir in paper_dirs:
             if not paper_dir.is_dir():
                 continue
             paper_meta_path = paper_dir / "meta.json"
@@ -271,9 +288,9 @@ def _iter_proceedings_view_records(cfg: Config):
             issues = list(proceeding_issues)
             try:
                 paper_meta = read_json(paper_meta_path)
-            except (ValueError, FileNotFoundError) as exc:
+            except (ValueError, OSError) as exc:
                 paper_meta = {"id": paper_dir.name, "title": paper_dir.name}
-                issues.extend(_invalid_json_issues(paper_dir.name, exc))
+                issues.extend(_metadata_read_issues(paper_dir.name, exc))
             row = {
                 "paper_id": paper_meta.get("id") or paper_dir.name,
                 "title": paper_meta.get("title") or "",

@@ -318,6 +318,63 @@ def test_main_library_detail_returns_fallback_for_malformed_metadata_row(tmp_pat
     assert detail["issues"][0]["rule"] == "invalid_json"
 
 
+def test_main_library_view_reports_unreadable_metadata_separately(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import library_view
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    paper_dir = _write_main_paper(
+        papers_root,
+        "Locked-2026-Metadata",
+        paper_id="locked-paper",
+        title="Locked metadata",
+    )
+    cfg = _build_config({}, tmp_path)
+    original_read_meta = library_view.read_meta
+
+    def read_meta_with_lock(current_dir: Path) -> dict:
+        if current_dir == paper_dir:
+            raise PermissionError("metadata is locked")
+        return original_read_meta(current_dir)
+
+    monkeypatch.setattr(library_view, "read_meta", read_meta_with_lock)
+
+    view = library_view.build_main_library_view(cfg)
+
+    row = view["papers"][0]
+    assert row["paper_id"] == "Locked-2026-Metadata"
+    assert row["issues"][0]["rule"] == "metadata_unreadable"
+    assert "Failed to read metadata" in row["issues"][0]["message"]
+
+
+def test_main_library_detail_returns_fallback_for_unreadable_metadata_row(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import library_view
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    paper_dir = _write_main_paper(
+        papers_root,
+        "Locked-2026-Detail",
+        paper_id="locked-detail",
+        title="Locked detail",
+        write_pdf=True,
+    )
+    cfg = _build_config({}, tmp_path)
+    original_read_meta = library_view.read_meta
+
+    def read_meta_with_lock(current_dir: Path) -> dict:
+        if current_dir == paper_dir:
+            raise PermissionError("metadata is locked")
+        return original_read_meta(current_dir)
+
+    monkeypatch.setattr(library_view, "read_meta", read_meta_with_lock)
+
+    detail = library_view.get_main_paper_detail(cfg, paper_dir.name)
+
+    assert detail["paper_id"] == paper_dir.name
+    assert detail["title"] == paper_dir.name
+    assert detail["has_pdf"] is True
+    assert detail["issues"][0]["rule"] == "metadata_unreadable"
+
+
 def test_proceedings_view_lists_child_papers_by_volume(tmp_path: Path) -> None:
     from scholaraio.services.library_view import build_proceedings_library_view
 
@@ -358,6 +415,55 @@ def test_proceedings_view_isolates_malformed_child_metadata(tmp_path: Path) -> N
     assert rows["Broken-2026-Child"]["has_pdf"] is True
     assert rows["Broken-2026-Child"]["issue_counts"]["error"] == 1
     assert rows["Broken-2026-Child"]["issues"][0]["rule"] == "invalid_json"
+    assert view["issue_totals"]["error"] == 1
+
+
+def test_proceedings_view_isolates_unreadable_volume_metadata(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import library_view
+
+    proceedings_root = tmp_path / "data" / "libraries" / "proceedings"
+    _write_proceedings_child(proceedings_root)
+    proceeding_meta_path = proceedings_root / "Proc-2026-Test" / "meta.json"
+    cfg = _build_config({}, tmp_path)
+    original_read_json = library_view.read_json
+
+    def read_json_with_lock(path: Path) -> dict:
+        if path == proceeding_meta_path:
+            raise PermissionError("metadata is locked")
+        return original_read_json(path)
+
+    monkeypatch.setattr(library_view, "read_json", read_json_with_lock)
+
+    view = library_view.build_proceedings_library_view(cfg)
+
+    row = view["papers"][0]
+    assert row["paper_id"] == "proc-paper-1"
+    assert row["issues"][0]["rule"] == "metadata_unreadable"
+    assert row["issues"][0]["paper_id"] == "Proc-2026-Test"
+
+
+def test_proceedings_view_isolates_unreadable_child_metadata(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import library_view
+
+    proceedings_root = tmp_path / "data" / "libraries" / "proceedings"
+    _write_proceedings_child(proceedings_root)
+    child_meta_path = proceedings_root / "Proc-2026-Test" / "papers" / "Wave-2026-Test" / "meta.json"
+    cfg = _build_config({}, tmp_path)
+    original_read_json = library_view.read_json
+
+    def read_json_with_lock(path: Path) -> dict:
+        if path == child_meta_path:
+            raise PermissionError("metadata is locked")
+        return original_read_json(path)
+
+    monkeypatch.setattr(library_view, "read_json", read_json_with_lock)
+
+    view = library_view.build_proceedings_library_view(cfg)
+
+    row = view["papers"][0]
+    assert row["paper_id"] == "Wave-2026-Test"
+    assert row["title"] == "Wave-2026-Test"
+    assert row["issues"][0]["rule"] == "metadata_unreadable"
     assert view["issue_totals"]["error"] == 1
 
 
