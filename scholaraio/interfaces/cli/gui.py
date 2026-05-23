@@ -235,7 +235,8 @@ def serve_library_view(
     """Run the local read-only WebUI until interrupted."""
 
     server = create_library_view_server(cfg, host=host, port=port)
-    actual_host, actual_port = server.server_address
+    actual_host = host or "127.0.0.1"
+    actual_port = server.server_port
     url = f"http://{actual_host}:{actual_port}"
     if open_browser:
         threading.Timer(0.2, lambda: webbrowser.open(url)).start()
