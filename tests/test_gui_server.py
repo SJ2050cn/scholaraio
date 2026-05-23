@@ -215,6 +215,45 @@ def test_library_view_server_serves_main_pdf_inline(tmp_path):
         server.server_close()
 
 
+def test_library_view_server_serves_non_ascii_pdf_filename(tmp_path):
+    from scholaraio.interfaces.cli.gui import create_library_view_server
+
+    cfg = _build_config({}, tmp_path)
+    paper_dir = tmp_path / "data" / "libraries" / "papers" / "王-2026-中文论文"
+    paper_dir.mkdir(parents=True)
+    (paper_dir / "meta.json").write_text(
+        json.dumps({"id": "cn-pdf", "title": "中文论文", "authors": ["王"], "year": 2026}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (paper_dir / "王-2026-中文论文.pdf").write_bytes(b"%PDF-cn")
+
+    server = create_library_view_server(cfg, host="127.0.0.1", port=0)
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://{host}:{port}/api/main/pdf?id=cn-pdf", timeout=3) as response:
+            body = response.read()
+            disposition = response.headers["Content-Disposition"]
+        assert body == b"%PDF-cn"
+        assert 'filename="paper.pdf"' in disposition
+        assert "filename*=UTF-8''%E7%8E%8B-2026-%E4%B8%AD%E6%96%87%E8%AE%BA%E6%96%87.pdf" in disposition
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_pdf_content_disposition_uses_ascii_fallback_and_strips_line_breaks():
+    from scholaraio.interfaces.cli.gui import _pdf_content_disposition
+
+    disposition = _pdf_content_disposition('坏\r\nName".pdf')
+
+    assert "\r" not in disposition
+    assert "\n" not in disposition
+    assert 'filename="paper.pdf"' in disposition
+    assert "filename*=UTF-8''%E5%9D%8F__Name_.pdf" in disposition
+
+
 def test_library_view_server_head_pdf_does_not_read_body(tmp_path):
     from scholaraio.interfaces.cli.gui import create_library_view_server
 

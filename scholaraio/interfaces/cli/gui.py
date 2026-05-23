@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -35,6 +35,21 @@ def _static_dir() -> Path:
 
 def _json_bytes(payload: object) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def _pdf_content_disposition(filename: str) -> str:
+    safe_name = filename.replace("\\", "_").replace('"', "_").replace("\r", "_").replace("\n", "_").strip()
+    if not safe_name:
+        safe_name = "paper.pdf"
+    try:
+        fallback = safe_name.encode("ascii").decode("ascii")
+    except UnicodeEncodeError:
+        fallback = "paper.pdf"
+    fallback = (
+        fallback.replace("\\", "_").replace('"', "_").replace("\r", "_").replace("\n", "_").strip() or "paper.pdf"
+    )
+    encoded = quote(safe_name, safe="")
+    return f"inline; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
 
 
 class LibraryViewRequestHandler(BaseHTTPRequestHandler):
@@ -84,12 +99,11 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         return values[0]
 
     def _send_pdf(self, pdf_path: Path) -> None:
-        filename = pdf_path.name.replace("\\", "_").replace('"', "_")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/pdf")
         self.send_header("Content-Length", str(pdf_path.stat().st_size))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Disposition", f'inline; filename="{filename}"')
+        self.send_header("Content-Disposition", _pdf_content_disposition(pdf_path.name))
         self.end_headers()
         if self.command == "HEAD":
             return

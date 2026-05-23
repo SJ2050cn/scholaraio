@@ -161,8 +161,8 @@ def build_main_library_view(cfg: Config) -> dict:
     }
 
 
-def _find_main_paper(cfg: Config, paper_id: str) -> tuple[Path, dict, list[dict]]:
-    issue_map = _main_issue_map(cfg.papers_dir)
+def _find_main_paper(cfg: Config, paper_id: str, *, include_issues: bool = True) -> tuple[Path, dict, list[dict]]:
+    issue_map = _main_issue_map(cfg.papers_dir) if include_issues else {}
     for paper_dir in iter_paper_dirs(cfg.papers_dir):
         try:
             meta = read_meta(paper_dir)
@@ -321,7 +321,7 @@ def get_proceedings_paper_detail(cfg: Config, paper_id: str) -> dict:
 
 def get_main_paper_pdf(cfg: Config, paper_id: str) -> Path:
     """Return the local PDF path for one main-library paper."""
-    paper_dir, _meta, _issues = _find_main_paper(cfg, paper_id)
+    paper_dir, _meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
     pdf = find_pdf(paper_dir)
     if pdf is None:
         raise KeyError(paper_id)

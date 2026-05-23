@@ -169,6 +169,27 @@ def test_main_library_detail_returns_abstract_conclusion_toc_and_pdf_without_com
     assert "commands" not in detail
 
 
+def test_main_library_pdf_lookup_does_not_audit_entire_library(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import library_view
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    paper_dir = _write_main_paper(
+        papers_root,
+        "Doe-2026-PDF",
+        paper_id="paper-pdf",
+        title="PDF paper",
+        write_pdf=True,
+    )
+    cfg = _build_config({}, tmp_path)
+
+    def fail_audit(*_args, **_kwargs):
+        raise AssertionError("PDF lookup should not audit the full library")
+
+    monkeypatch.setattr(library_view, "audit_papers", fail_audit)
+
+    assert library_view.get_main_paper_pdf(cfg, "paper-pdf") == paper_dir / "Doe-2026-PDF.pdf"
+
+
 def test_main_library_detail_skips_malformed_metadata_before_requested_paper(tmp_path: Path) -> None:
     from scholaraio.services.library_view import get_main_paper_detail
 
