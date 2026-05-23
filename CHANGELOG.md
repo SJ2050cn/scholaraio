@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Paper PDF preservation during ingest and repair**: Kept original PDFs beside `paper.md` in the canonical paper directory, using the paper directory stem for the PDF filename, and avoided overwriting an existing curated PDF when a duplicate DOI path only needs to restore missing Markdown.
+- **Paper PDF preservation during ingest and repair**: Kept original PDFs beside `paper.md` in the canonical paper directory, using the paper directory stem for the PDF filename, avoided overwriting an existing curated PDF when a duplicate DOI path only needs to restore missing Markdown, and made `attach-pdf` refuse to replace an existing canonical PDF unless `--force` is supplied.
 - **Local WebUI robustness and privacy**: Hardened the WebUI against malformed metadata, stale async list/detail responses, full-library re-audits on every poll, non-ASCII PDF filenames, large PDF buffering, stale PDF toolbar state, stale type filters, and remote runtime script loading.
 - **Diagram CLI output noise**: Stopped service-layer diagram generation logs from reusing the user-facing `Generated:` prefix, so `diagram --from-text` reports the generated artifact only once.
 - **Local MinerU batch image assets**: Saved images returned by the local MinerU API into per-PDF `<pdf_stem>_images/` directories and rewrote Markdown references accordingly, preventing `cmd_batch` runs that share one output directory from overwriting generic image names such as `image_1.png`.

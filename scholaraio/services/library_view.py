@@ -277,7 +277,7 @@ def _iter_proceedings_view_records(cfg: Config):
             row = {
                 "paper_id": paper_meta.get("id") or paper_dir.name,
                 "title": paper_meta.get("title") or "",
-                "authors": ", ".join(paper_meta.get("authors") or []),
+                "authors": _authors_text(paper_meta.get("authors") or []),
                 "year": str(paper_meta.get("year") or ""),
                 "journal": paper_meta.get("journal") or "",
                 "abstract": paper_meta.get("abstract") or "",

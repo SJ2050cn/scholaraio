@@ -1893,6 +1893,36 @@ class TestTopicCliErrors:
 
 
 class TestAttachPdfFallback:
+    def test_attach_pdf_refuses_to_overwrite_existing_pdf_without_force(self, tmp_path, monkeypatch):
+        paper_dir = tmp_path / "papers" / "Smith-2023-Test"
+        paper_dir.mkdir(parents=True)
+        (paper_dir / "meta.json").write_text("{}", encoding="utf-8")
+        existing_pdf = paper_dir / "Smith-2023-Test.pdf"
+        existing_pdf.write_bytes(b"%PDF-curated\n")
+        src_pdf = tmp_path / "input.pdf"
+        src_pdf.write_bytes(b"%PDF-new\n")
+        messages: list[str] = []
+
+        cfg = SimpleNamespace(papers_dir=tmp_path / "papers")
+        monkeypatch.setattr(cli, "_resolve_paper", lambda *_: paper_dir)
+        monkeypatch.setattr(cli, "ui", messages.append)
+
+        args = Namespace(paper_id="paper-1", pdf_path=str(src_pdf), dry_run=False, force=False)
+        with pytest.raises(SystemExit) as exc:
+            cli.cmd_attach_pdf(args, cfg)
+
+        assert exc.value.code == 1
+        assert existing_pdf.read_bytes() == b"%PDF-curated\n"
+        assert src_pdf.read_bytes() == b"%PDF-new\n"
+        assert any("--force" in msg for msg in messages)
+
+    def test_attach_pdf_parser_accepts_force(self):
+        from scholaraio.interfaces.cli.parser import _build_parser
+
+        args = _build_parser().parse_args(["attach-pdf", "paper-1", "paper.pdf", "--force"])
+
+        assert args.force is True
+
     def test_attach_pdf_falls_back_without_cloud_key(self, tmp_path, monkeypatch):
         paper_dir = tmp_path / "papers" / "Smith-2023-Test"
         paper_dir.mkdir(parents=True)

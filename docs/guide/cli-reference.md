@@ -49,7 +49,7 @@ scholaraio enrich-l3
 scholaraio backfill-abstract
 scholaraio refetch
 scholaraio translate
-scholaraio attach-pdf
+scholaraio attach-pdf [--dry-run] [--force]
 ```
 
 - `pipeline` is the main composable ingest entrypoint.
@@ -61,6 +61,7 @@ scholaraio attach-pdf
 - `patent-fetch` downloads a patent PDF into the configured patent inbox for the normal patent ingest flow.
 - `refetch` refreshes citation counts, bibliographic metadata, and structured `references` for already ingested papers.
 - `refetch --references-only` / `--refs-only` limits the run to DOI papers whose `references` field is still empty; in single-paper mode it only updates `references`.
+- `attach-pdf` attaches a source PDF to an existing paper directory, stores it beside `paper.md` using the paper directory stem, and regenerates Markdown. It refuses to replace an existing canonical PDF unless `--force` is supplied.
 - Current preset values are `full`, `ingest`, `enrich`, and `reindex`.
 - Run `scholaraio pipeline --help` for pipeline options such as `--steps`, `--dry-run`, `--no-api`, and `--rebuild`.
 

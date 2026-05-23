@@ -432,6 +432,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ap.add_argument("paper_id", help="Paper ID (directory name / UUID / DOI)")
     p_ap.add_argument("pdf_path", help="PDF file path")
     p_ap.add_argument("--dry-run", action="store_true", help="Preview planned actions without running them")
+    p_ap.add_argument("--force", action="store_true", help="Replace an existing canonical PDF before conversion")
 
     # --- citation-check ---
     p_cc = sub.add_parser("citation-check", help="Verify whether citations in text exist in the local library")

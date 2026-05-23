@@ -361,6 +361,37 @@ def test_proceedings_view_isolates_malformed_child_metadata(tmp_path: Path) -> N
     assert view["issue_totals"]["error"] == 1
 
 
+def test_proceedings_view_stringifies_non_string_authors(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import build_proceedings_library_view
+
+    proceedings_root = tmp_path / "data" / "libraries" / "proceedings"
+    proceeding_dir = proceedings_root / "Proc-2026-Test"
+    child_dir = proceeding_dir / "papers" / "Mixed-2026-Authors"
+    child_dir.mkdir(parents=True)
+    (proceeding_dir / "meta.json").write_text(
+        json.dumps({"id": "proc-1", "title": "Proceedings of Tests", "year": 2026}),
+        encoding="utf-8",
+    )
+    (child_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "id": "mixed-authors",
+                "title": "Mixed author metadata",
+                "authors": ["Pat Chen", 42, None],
+                "year": 2026,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (child_dir / "paper.md").write_text("# Mixed author metadata\n", encoding="utf-8")
+    cfg = _build_config({}, tmp_path)
+
+    view = build_proceedings_library_view(cfg)
+
+    assert view["total"] == 1
+    assert view["papers"][0]["authors_text"] == "Pat Chen, 42"
+
+
 def test_proceedings_detail_returns_volume_context_without_commands(tmp_path: Path) -> None:
     from scholaraio.services.library_view import get_proceedings_paper_detail
 

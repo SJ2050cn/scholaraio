@@ -72,7 +72,11 @@ def move_pdf_to_paper_dir(src_pdf: Path, paper_d: Path) -> Path:
 
 
 def normalize_pdf_name(paper_d: Path, current_pdf: Path) -> Path:
-    """Rename an in-directory PDF to the canonical paper-directory filename."""
+    """Normalize an in-directory PDF to the canonical paper-directory filename.
+
+    When the canonical destination already exists, the non-canonical
+    ``current_pdf`` is removed so an existing curated PDF is not overwritten.
+    """
     dest = pdf_path(paper_d)
     if current_pdf.resolve() == dest.resolve():
         return dest
