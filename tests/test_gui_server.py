@@ -107,6 +107,15 @@ def test_library_view_static_assets_live_inside_package() -> None:
     assert (static_dir / "styles.css").is_file()
 
 
+def test_library_view_css_preserves_hidden_attribute_for_pdf_toolbar() -> None:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    css = (_static_dir() / "styles.css").read_text(encoding="utf-8")
+
+    assert "[hidden]" in css
+    assert "display: none !important" in css
+
+
 def test_library_view_tab_switch_resets_stale_type_filter() -> None:
     from scholaraio.interfaces.cli.gui import _static_dir
 
