@@ -85,7 +85,7 @@ zotero:
 scholaraio attach-pdf <paper-id> <path/to/paper.pdf>
 ```
 
-自动调用 MinerU 转换 PDF → markdown，补全缺失的 abstract，增量更新 embed + index。
+自动把原始 PDF 保存到论文目录中（与 `paper.md` 同级，使用论文目录同名 stem），调用 MinerU 转换 PDF → markdown，补全缺失的 abstract，增量更新 embed + index。
 
 ## 批量补转 PDF（已入库论文）
 

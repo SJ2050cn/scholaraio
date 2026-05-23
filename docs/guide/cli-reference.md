@@ -78,7 +78,7 @@ scholaraio explore
 - Use `topics` for BERTopic-based topic modeling and exploration.
 - Use `explore` for OpenAlex-backed literature exploration outside the main library.
 
-## Import, Export, Publish, And Workspaces
+## Import, Export, Browse, And Workspaces
 
 ```text
 scholaraio import-endnote
@@ -106,7 +106,7 @@ scholaraio migrate finalize --migration-id <id> --confirm
 - `import-endnote` and `import-zotero` bring existing libraries into ScholarAIO.
 - `export` handles BibTeX, RIS, Markdown, and DOCX export.
 - `publish-site` generates a static site from audited `published/*/metadata.json` archives, copying PDF/source assets by default and supporting `--symlink` for local preview.
-- `gui` starts a local read-only WebUI for browsing the main paper library and proceedings child papers with live refresh.
+- `gui` starts a local read-only WebUI for browsing the main paper library and proceedings child papers with live refresh, audit status, Markdown-rendered abstracts/conclusions, and local PDF preview. The WebUI serves only packaged local assets and does not load remote runtime scripts.
 - `ws` manages paper subsets for focused projects and writing workflows.
 
 ## Scientific Runtime And Documents
