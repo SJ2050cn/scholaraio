@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 import shutil
 import subprocess
 import threading
+from contextlib import suppress
+from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -840,6 +843,51 @@ def test_library_view_server_serves_non_ascii_pdf_filename(tmp_path):
         server.server_close()
 
 
+def test_library_view_pdf_errors_do_not_send_ok_before_file_check():
+    from scholaraio.interfaces.cli.gui import LibraryViewRequestHandler
+
+    class MissingPdf:
+        name = "missing.pdf"
+
+        def stat(self):
+            raise FileNotFoundError("missing")
+
+        def open(self, _mode):
+            raise AssertionError("open should not run after failed stat")
+
+    class UnreadablePdf:
+        name = "locked.pdf"
+
+        def stat(self):
+            return SimpleNamespace(st_size=1)
+
+        def open(self, _mode):
+            raise PermissionError("locked")
+
+    for pdf_path, expected_status in [
+        (MissingPdf(), HTTPStatus.NOT_FOUND),
+        (UnreadablePdf(), HTTPStatus.INTERNAL_SERVER_ERROR),
+    ]:
+        handler = LibraryViewRequestHandler.__new__(LibraryViewRequestHandler)
+        statuses: list[HTTPStatus] = []
+        handler.command = "GET"
+        handler.wfile = io.BytesIO()
+        handler.send_response = statuses.append
+        handler.send_header = lambda *_args, **_kwargs: None
+        handler.end_headers = lambda: None
+
+        def record_error(status, _message, headers=None, *, statuses=statuses):
+            statuses.append(status)
+
+        handler._send_error_json = record_error
+
+        with suppress(FileNotFoundError, PermissionError):
+            handler._send_pdf(pdf_path)  # type: ignore[arg-type]
+
+        assert HTTPStatus.OK not in statuses
+        assert statuses == [expected_status]
+
+
 def test_pdf_content_disposition_uses_ascii_fallback_and_strips_line_breaks():
     from scholaraio.interfaces.cli.gui import _pdf_content_disposition
 
@@ -849,6 +897,25 @@ def test_pdf_content_disposition_uses_ascii_fallback_and_strips_line_breaks():
     assert "\n" not in disposition
     assert 'filename="paper.pdf"' in disposition
     assert "filename*=UTF-8''%E5%9D%8F__Name_.pdf" in disposition
+
+
+def test_library_view_rejected_write_methods_close_connection():
+    from scholaraio.interfaces.cli.gui import LibraryViewRequestHandler
+
+    handler = LibraryViewRequestHandler.__new__(LibraryViewRequestHandler)
+    captured: dict[str, object] = {}
+    handler.close_connection = False
+    handler.headers = {"Content-Length": "7"}
+    handler.rfile = io.BytesIO(b"payload")
+    handler._send_error_json = lambda status, message, headers=None: captured.update(
+        {"status": status, "message": message, "headers": headers or {}}
+    )
+
+    handler.do_POST()
+
+    assert handler.close_connection is True
+    assert captured["status"] == HTTPStatus.METHOD_NOT_ALLOWED
+    assert captured["headers"] == {"Allow": "GET, HEAD", "Connection": "close"}
 
 
 def test_browser_url_uses_loopback_for_wildcard_bind_hosts():

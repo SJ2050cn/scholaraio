@@ -108,16 +108,30 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         return values[0]
 
     def _send_pdf(self, pdf_path: Path) -> None:
+        try:
+            size = pdf_path.stat().st_size
+            stream = pdf_path.open("rb")
+        except FileNotFoundError:
+            self._send_error_json(HTTPStatus.NOT_FOUND, "PDF file not found")
+            return
+        except OSError as exc:
+            self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+            return
+
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/pdf")
-        self.send_header("Content-Length", str(pdf_path.stat().st_size))
+        self.send_header("Content-Length", str(size))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Disposition", _pdf_content_disposition(pdf_path.name))
         self.end_headers()
         if self.command == "HEAD":
+            stream.close()
             return
-        with pdf_path.open("rb") as stream:
-            shutil.copyfileobj(stream, self.wfile, length=1024 * 1024)
+        with stream:
+            try:
+                shutil.copyfileobj(stream, self.wfile, length=1024 * 1024)
+            except OSError:
+                return
 
     def _handle_api(self, path: str) -> None:
         from scholaraio.services.library_view import (
@@ -210,10 +224,11 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_POST(self) -> None:
+        self.close_connection = True
         self._send_error_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
             "this WebUI is read-only",
-            headers={"Allow": "GET, HEAD"},
+            headers={"Allow": "GET, HEAD", "Connection": "close"},
         )
 
     do_PUT = do_POST
