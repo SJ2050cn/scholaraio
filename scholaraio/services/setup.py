@@ -25,7 +25,7 @@ import yaml
 
 from scholaraio.core.config import Config, load_config
 from scholaraio.providers.mineru import check_server as check_mineru_server
-from scholaraio.providers.paper2any import Paper2AnyError, list_paper2any_tools
+from scholaraio.providers.paper2any import Paper2AnyError, list_paper2any_tools, resolve_paper2any_mcp_url
 from scholaraio.providers.webtools import check_webextract_service, check_websearch_service
 
 # ============================================================================
@@ -556,6 +556,7 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
         env_transport="WEBSEARCH_TRANSPORT",
         env_base_url="WEBSEARCH_URL",
         env_mcp_urls=("WEBSEARCH_MCP_URL", "GUILESS_BING_SEARCH_MCP_URL"),
+        env_mcp_tool="WEBSEARCH_MCP_TOOL",
         env_api_keys=("WEBSEARCH_API_KEY", "GUILESS_BING_SEARCH_API_KEY"),
         command="scholaraio websearch",
         start_hint="python third_party/GUILessBingSearch/guiless_bing_search.py",
@@ -573,6 +574,7 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
         env_transport="WEBEXTRACT_TRANSPORT",
         env_base_url="WEBEXTRACT_URL",
         env_mcp_urls=("WEBEXTRACT_MCP_URL", "QT_WEB_EXTRACTOR_MCP_URL"),
+        env_mcp_tool="WEBEXTRACT_MCP_TOOL",
         env_api_keys=("WEBEXTRACT_API_KEY", "QT_WEB_EXTRACTOR_API_KEY"),
         command="scholaraio webextract",
         start_hint="qt-web-extractor serve",
@@ -622,6 +624,7 @@ def _optional_webtool_detail(
     env_transport: str,
     env_base_url: str,
     env_mcp_urls: tuple[str, ...],
+    env_mcp_tool: str,
     env_api_keys: tuple[str, ...],
     command: str,
     start_hint: str,
@@ -632,7 +635,7 @@ def _optional_webtool_detail(
     transport = (getattr(section, "transport", "") or os.environ.get(env_transport) or "http").strip().lower()
     base_url = (getattr(section, "base_url", "") or os.environ.get(env_base_url) or default_base_url).rstrip("/")
     mcp_url = (getattr(section, "mcp_url", "") or _first_env(env_mcp_urls) or f"{base_url}/mcp").rstrip("/")
-    mcp_tool = getattr(section, "mcp_tool", "") or default_mcp_tool
+    mcp_tool = getattr(section, "mcp_tool", "") or os.environ.get(env_mcp_tool, "").strip() or default_mcp_tool
     endpoint = mcp_url if transport == "mcp" else base_url
     endpoint_kind = "MCP" if transport == "mcp" else "HTTP"
     api_key_configured = bool(getattr(section, "api_key", "") or _first_env(env_api_keys))
@@ -670,7 +673,7 @@ def _first_env(names: tuple[str, ...]) -> str:
 
 def _paper2any_detail(cfg: Config, lang: Lang) -> str:
     root = cfg.paper2any_root
-    mcp_url = cfg.paper2any.mcp_url or os.environ.get("PAPER2ANY_MCP_URL", "").strip() or "http://127.0.0.1:8770/mcp"
+    mcp_url = resolve_paper2any_mcp_url(cfg)
     try:
         tool_count = len(list_paper2any_tools(cfg=cfg, timeout=1))
         sidecar_detail = (

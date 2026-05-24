@@ -265,6 +265,26 @@ def test_run_check_marks_optional_webtools_reachable(monkeypatch):
     assert "http://remote.example:8766/mcp" in result_map["Web extract"].detail
 
 
+def test_run_check_reports_optional_webtool_env_mcp_tools(monkeypatch):
+    cfg = Config()
+    cfg.websearch.transport = "mcp"
+    cfg.webextract.transport = "mcp"
+    monkeypatch.setenv("WEBSEARCH_MCP_TOOL", "custom_search")
+    monkeypatch.setenv("WEBEXTRACT_MCP_TOOL", "custom_fetch")
+    monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_huggingface", lambda *_: (True, "hf ok"))
+    monkeypatch.setattr("scholaraio.services.setup.recommend_pdf_parser", lambda *args: ("MinerU", "both reachable"))
+    monkeypatch.setattr("scholaraio.services.setup.check_websearch_service", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("scholaraio.services.setup.check_webextract_service", lambda *_args, **_kwargs: False)
+
+    results = run_check(cfg, "en")
+
+    result_map = {item.label: item for item in results}
+    assert "MCP tool custom_search" in result_map["Web search"].detail
+    assert "MCP tool custom_fetch" in result_map["Web extract"].detail
+
+
 def test_run_check_reports_paper2any_sidecar_reachability(monkeypatch):
     cfg = Config()
     cfg.paper2any.mcp_url = "http://remote.example:8770/mcp"
@@ -284,6 +304,27 @@ def test_run_check_reports_paper2any_sidecar_reachability(monkeypatch):
     assert "MCP sidecar 可访问" in result_map["Paper2Any"].detail
     assert "http://remote.example:8770/mcp" in result_map["Paper2Any"].detail
     assert "1 tools" in result_map["Paper2Any"].detail
+
+
+def test_run_check_reports_paper2any_env_mcp_url_precedence(monkeypatch):
+    cfg = Config()
+    cfg.paper2any.mcp_url = "http://config.example:8770/mcp"
+    monkeypatch.setenv("PAPER2ANY_MCP_URL", "http://env.example:8770/mcp")
+    monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_huggingface", lambda *_: (True, "hf ok"))
+    monkeypatch.setattr("scholaraio.services.setup.recommend_pdf_parser", lambda *args: ("MinerU", "both reachable"))
+    monkeypatch.setattr("scholaraio.services.setup.check_websearch_service", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("scholaraio.services.setup.check_webextract_service", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "scholaraio.services.setup.list_paper2any_tools", lambda *_args, **_kwargs: [{"name": "paper2any_status"}]
+    )
+
+    results = run_check(cfg, "en")
+
+    detail = {item.label: item for item in results}["Paper2Any"].detail
+    assert "MCP sidecar reachable @ http://env.example:8770/mcp" in detail
+    assert "http://config.example:8770/mcp" not in detail
 
 
 def test_wizard_config_template_includes_optional_external_tools(tmp_path):
