@@ -44,3 +44,7 @@ site/
 *.bak
 
 *.codex
+
+# Local third-party service checkouts and scratch artifacts
+third_party/
+''
