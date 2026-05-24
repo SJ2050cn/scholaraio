@@ -69,6 +69,34 @@ class TestWebtoolsConnector:
         assert result["status"] == "ok"
         assert seen["url"] == "http://localhost:9999/health"
 
+    def test_check_websearch_service_passes_timeout_to_http_health(self, monkeypatch):
+        seen: dict[str, object] = {}
+
+        def fake_urlopen(req, timeout=0):
+            seen["timeout"] = timeout
+            return _FakeResponse({"status": "ok"})
+
+        monkeypatch.setattr("scholaraio.providers.webtools.urlopen", fake_urlopen)
+
+        from scholaraio.providers.webtools import check_websearch_service
+
+        assert check_websearch_service(timeout=1.0) is True
+        assert seen["timeout"] == 1.0
+
+    def test_check_webextract_service_passes_timeout_to_http_health(self, monkeypatch):
+        seen: dict[str, object] = {}
+
+        def fake_urlopen(req, timeout=0):
+            seen["timeout"] = timeout
+            return _FakeResponse({"status": "ok"})
+
+        monkeypatch.setattr("scholaraio.providers.webtools.urlopen", fake_urlopen)
+
+        from scholaraio.providers.webtools import check_webextract_service
+
+        assert check_webextract_service(timeout=1.0) is True
+        assert seen["timeout"] == 1.0
+
     def test_websearch_posts_query_and_count(self, monkeypatch):
         seen: dict[str, object] = {}
 
