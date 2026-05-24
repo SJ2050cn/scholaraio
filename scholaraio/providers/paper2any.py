@@ -50,20 +50,25 @@ def call_paper2any_tool(
 
 def _client(*, cfg: object | None, timeout: int) -> StreamableHttpMcpClient:
     return StreamableHttpMcpClient(
-        _paper2any_mcp_url(cfg),
+        resolve_paper2any_mcp_url(cfg),
         api_key=_paper2any_mcp_api_key(cfg),
         client_name="scholaraio-paper2any-client",
         timeout=timeout,
     )
 
 
-def _paper2any_mcp_url(cfg: object | None) -> str:
+def resolve_paper2any_mcp_url(cfg: object | None = None) -> str:
+    """Resolve the Paper2Any MCP endpoint using provider precedence."""
     env_url = os.environ.get("PAPER2ANY_MCP_URL", "").strip()
     if env_url:
         return env_url
     section = getattr(cfg, "paper2any", None)
     config_url = str(getattr(section, "mcp_url", "") or "").strip()
     return config_url or DEFAULT_PAPER2ANY_MCP_URL
+
+
+def _paper2any_mcp_url(cfg: object | None) -> str:
+    return resolve_paper2any_mcp_url(cfg)
 
 
 def _paper2any_mcp_api_key(cfg: object | None) -> str:

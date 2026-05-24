@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-05-24
+
 ### Added
 
 - **Line-addressable evidence chunk search** ([#35](https://github.com/ZimoLiao/scholaraio/issues/35)): Added `scholaraio index --chunks` and `scholaraio search --chunk` so agents can build a paper-section chunk index from `paper.md` / `meta.json["toc"]` and retrieve source snippets with paper IDs, section titles, line ranges, and normal search filters such as `--year`, `--journal`, and `--type`.

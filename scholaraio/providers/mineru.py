@@ -240,10 +240,18 @@ def check_server(api_url: str = DEFAULT_API_URL) -> bool:
     Returns:
         可达返回 ``True``，不可达返回 ``False``。
     """
+    base_url = api_url.rstrip("/")
     try:
-        resp = requests.get(f"{api_url}/docs", timeout=5)
-        return resp.status_code == 200
-    except requests.ConnectionError:
+        resp = requests.get(f"{base_url}/openapi.json", timeout=5)
+        if resp.status_code != 200:
+            return False
+        try:
+            data = resp.json()
+        except ValueError:
+            return False
+        paths = data.get("paths", {}) if isinstance(data, dict) else {}
+        return isinstance(paths, dict) and PARSE_ENDPOINT in paths
+    except requests.RequestException:
         return False
 
 

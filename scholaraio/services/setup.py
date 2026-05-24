@@ -13,15 +13,20 @@ import contextlib
 import importlib
 import importlib.util
 import io
+import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from scholaraio.core.config import Config, load_config
+from scholaraio.providers.mineru import check_server as check_mineru_server
+from scholaraio.providers.paper2any import Paper2AnyError, list_paper2any_tools, resolve_paper2any_mcp_url
+from scholaraio.providers.webtools import check_webextract_service, check_websearch_service
 
 # ============================================================================
 #  Bilingual strings
@@ -50,6 +55,8 @@ _S: dict[str, dict[Lang, str]] = {
     "contact_email": {"en": "Contact email", "zh": "联系邮箱"},
     "s2_key": {"en": "Semantic Scholar API key", "zh": "Semantic Scholar API key"},
     "zotero_key": {"en": "Zotero API key", "zh": "Zotero API key"},
+    "websearch": {"en": "Web search", "zh": "Web search"},
+    "webextract": {"en": "Web extract", "zh": "Web extract"},
     "paper2any": {"en": "Paper2Any", "zh": "Paper2Any"},
     "directories": {"en": "Directories", "zh": "目录结构"},
     "papers_count": {"en": "Papers", "zh": "论文数量"},
@@ -540,16 +547,43 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
             )
         )
 
-    paper2any_root = cfg.paper2any_root
-    paper2any_mcp_url = cfg.paper2any.mcp_url or "http://127.0.0.1:8770/mcp"
-    if paper2any_root.exists():
-        paper2any_detail = f"optional: OpenDCAI/Paper2Any checkout found at {paper2any_root}; MCP {paper2any_mcp_url}"
-    else:
-        paper2any_detail = (
-            f"optional: checkout not found at {paper2any_root}; "
-            f"agent can place OpenDCAI/Paper2Any there and start `scholaraio paper2any mcp-serve`"
-        )
-    results.append(CheckResult(t("paper2any", lang), True, paper2any_detail))
+    websearch_detail = _optional_webtool_detail(
+        cfg,
+        section_name="websearch",
+        service_name="GUILessBingSearch",
+        default_base_url="http://127.0.0.1:8765",
+        default_mcp_tool="search_bing",
+        env_transport="WEBSEARCH_TRANSPORT",
+        env_base_url="WEBSEARCH_URL",
+        env_mcp_urls=("WEBSEARCH_MCP_URL", "GUILESS_BING_SEARCH_MCP_URL"),
+        env_mcp_tool="WEBSEARCH_MCP_TOOL",
+        env_api_keys=("WEBSEARCH_API_KEY", "GUILESS_BING_SEARCH_API_KEY"),
+        command="scholaraio websearch",
+        start_hint="python third_party/GUILessBingSearch/guiless_bing_search.py",
+        checker=check_websearch_service,
+        lang=lang,
+    )
+    results.append(CheckResult(t("websearch", lang), True, websearch_detail))
+
+    webextract_detail = _optional_webtool_detail(
+        cfg,
+        section_name="webextract",
+        service_name="qt-web-extractor",
+        default_base_url="http://127.0.0.1:8766",
+        default_mcp_tool="fetch_url",
+        env_transport="WEBEXTRACT_TRANSPORT",
+        env_base_url="WEBEXTRACT_URL",
+        env_mcp_urls=("WEBEXTRACT_MCP_URL", "QT_WEB_EXTRACTOR_MCP_URL"),
+        env_mcp_tool="WEBEXTRACT_MCP_TOOL",
+        env_api_keys=("WEBEXTRACT_API_KEY", "QT_WEB_EXTRACTOR_API_KEY"),
+        command="scholaraio webextract",
+        start_hint="qt-web-extractor serve",
+        checker=check_webextract_service,
+        lang=lang,
+    )
+    results.append(CheckResult(t("webextract", lang), True, webextract_detail))
+
+    results.append(CheckResult(t("paper2any", lang), True, _paper2any_detail(cfg, lang)))
 
     # Directories
     dirs_to_check = [
@@ -580,6 +614,104 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
     return results
 
 
+def _optional_webtool_detail(
+    cfg: Config,
+    *,
+    section_name: str,
+    service_name: str,
+    default_base_url: str,
+    default_mcp_tool: str,
+    env_transport: str,
+    env_base_url: str,
+    env_mcp_urls: tuple[str, ...],
+    env_mcp_tool: str,
+    env_api_keys: tuple[str, ...],
+    command: str,
+    start_hint: str,
+    checker: Callable[..., bool],
+    lang: Lang,
+) -> str:
+    section = getattr(cfg, section_name)
+    transport = (getattr(section, "transport", "") or os.environ.get(env_transport) or "http").strip().lower()
+    base_url = (getattr(section, "base_url", "") or os.environ.get(env_base_url) or default_base_url).rstrip("/")
+    mcp_url = (getattr(section, "mcp_url", "") or _first_env(env_mcp_urls) or f"{base_url}/mcp").rstrip("/")
+    mcp_tool = getattr(section, "mcp_tool", "") or os.environ.get(env_mcp_tool, "").strip() or default_mcp_tool
+    endpoint = mcp_url if transport == "mcp" else base_url
+    endpoint_kind = "MCP" if transport == "mcp" else "HTTP"
+    api_key_configured = bool(getattr(section, "api_key", "") or _first_env(env_api_keys))
+
+    try:
+        reachable = bool(checker(cfg, timeout=1.0))
+    except Exception:
+        reachable = False
+
+    if lang == "zh":
+        status = "可访问" if reachable else "未运行/不可达"
+        auth = "认证已配置" if api_key_configured else "未配置认证"
+        return (
+            f"可选: {service_name} {endpoint_kind} @ {endpoint}; {status}; {auth}; "
+            f"配置 {section_name}.transport/{section_name}.mcp_url 或 {section_name}.base_url；"
+            f"启动: `{start_hint}`；验证: `{command}`" + (f"; MCP tool {mcp_tool}" if transport == "mcp" else "")
+        )
+
+    status = "reachable" if reachable else "not running/unreachable"
+    auth = "auth configured" if api_key_configured else "no auth configured"
+    return (
+        f"optional: {service_name} {endpoint_kind} @ {endpoint}; {status}; {auth}; "
+        f"configure {section_name}.transport/{section_name}.mcp_url or {section_name}.base_url; "
+        f"start: `{start_hint}`; verify: `{command}`" + (f"; MCP tool {mcp_tool}" if transport == "mcp" else "")
+    )
+
+
+def _first_env(names: tuple[str, ...]) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _paper2any_detail(cfg: Config, lang: Lang) -> str:
+    root = cfg.paper2any_root
+    mcp_url = resolve_paper2any_mcp_url(cfg)
+    try:
+        tool_count = len(list_paper2any_tools(cfg=cfg, timeout=1))
+        sidecar_detail = (
+            f"MCP sidecar 可访问 @ {mcp_url}; {tool_count} tools"
+            if lang == "zh"
+            else (f"MCP sidecar reachable @ {mcp_url}; {tool_count} tools")
+        )
+    except Paper2AnyError:
+        sidecar_detail = (
+            f"MCP sidecar 未运行/不可达 @ {mcp_url}"
+            if lang == "zh"
+            else (f"MCP sidecar not running/unreachable @ {mcp_url}")
+        )
+
+    if root.exists():
+        root_detail = (
+            f"OpenDCAI/Paper2Any checkout found at {root}"
+            if lang == "en"
+            else (f"OpenDCAI/Paper2Any checkout 已找到: {root}")
+        )
+    else:
+        root_detail = (
+            f"checkout not found at {root}; run `scholaraio paper2any setup` or place OpenDCAI/Paper2Any there"
+            if lang == "en"
+            else f"checkout 未找到: {root}; 运行 `scholaraio paper2any setup` 或把 OpenDCAI/Paper2Any 放到这里"
+        )
+
+    if lang == "zh":
+        return (
+            f"可选: {root_detail}; {sidecar_detail}; "
+            "启动: `scholaraio paper2any mcp-serve`; backend 可选: `scholaraio paper2any backend-serve`"
+        )
+    return (
+        f"optional: {root_detail}; {sidecar_detail}; "
+        "start: `scholaraio paper2any mcp-serve`; optional backend: `scholaraio paper2any backend-serve`"
+    )
+
+
 def _check_mineru(cfg: Config, lang: Lang) -> tuple[bool, str]:
     """Check MinerU availability (local server or cloud CLI + token)."""
     status = _detect_mineru(cfg, lang)
@@ -591,21 +723,15 @@ def _detect_mineru(cfg: Config, lang: Lang) -> MinerUStatus:
     cli_path = shutil.which("mineru-open-api")
     token_configured = bool(cfg.resolved_mineru_api_key())
 
-    try:
-        import requests as _req
-
-        r = _req.get(cfg.ingest.mineru_endpoint, timeout=2)
-        if r.status_code < 500:
-            return MinerUStatus(
-                ok=True,
-                detail=f"local server @ {cfg.ingest.mineru_endpoint}",
-                recommendable=True,
-                cloud_only=False,
-                cli_available=bool(cli_path),
-                token_configured=token_configured,
-            )
-    except Exception:
-        pass
+    if check_mineru_server(cfg.ingest.mineru_endpoint):
+        return MinerUStatus(
+            ok=True,
+            detail=f"local server @ {cfg.ingest.mineru_endpoint}",
+            recommendable=True,
+            cloud_only=False,
+            cli_available=bool(cli_path),
+            token_configured=token_configured,
+        )
 
     if token_configured and cli_path:
         return MinerUStatus(
@@ -1125,6 +1251,29 @@ ingest:
   mineru_enable_formula: true         # only effective for pipeline / vlm
   mineru_enable_table: true           # only effective for pipeline / vlm
   abstract_llm_mode: verify # off | fallback | verify
+
+# Optional external web tools. Prefer MCP endpoints for agent workflows.
+websearch:
+  transport: mcp
+  mcp_url: http://127.0.0.1:8765/mcp
+  api_key: null        # optional bearer token -> config.local.yaml or env WEBSEARCH_API_KEY
+  mcp_tool: search_bing
+
+webextract:
+  transport: mcp
+  mcp_url: http://127.0.0.1:8766/mcp
+  api_key: null        # optional bearer token -> config.local.yaml or env WEBEXTRACT_API_KEY
+  mcp_tool: fetch_url
+
+# Paper2Any external extension. ScholarAIO talks to its lightweight MCP sidecar;
+# the OpenDCAI/Paper2Any checkout stays outside tracked source.
+paper2any:
+  transport: mcp
+  mcp_url: http://127.0.0.1:8770/mcp
+  root: null           # default: data/runtime/extensions/paper2any/Paper2Any
+  base_url: http://127.0.0.1:8000 # optional upstream Paper2Any FastAPI backend
+  api_key: null        # optional MCP bearer token -> config.local.yaml
+  backend_api_key: null # required for upstream /api routes -> config.local.yaml
 
 # Semantic embeddings (Qwen3-Embedding-0.6B, ~1.2 GB, auto-downloaded)
 embed:

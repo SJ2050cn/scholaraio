@@ -58,7 +58,7 @@ def _headers(api_key: str) -> dict[str, str]:
     return headers
 
 
-def _load_json_response(req: Request, *, timeout: int, error_prefix: str):
+def _load_json_response(req: Request, *, timeout: float, error_prefix: str):
     try:
         with urlopen(req, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
@@ -83,11 +83,11 @@ def _load_json_response(req: Request, *, timeout: int, error_prefix: str):
 # ---------------------------------------------------------------------------
 
 
-def check_websearch_health(base_url: str | None = None) -> dict:
+def check_websearch_health(base_url: str | None = None, timeout: float = 5.0) -> dict:
     """Check whether the external web search service is healthy."""
     base = _resolve_base_url(base_url, "WEBSEARCH_URL", _DEFAULT_WEBSEARCH_URL)
     req = Request(f"{base}/health", method="GET")
-    return _load_json_response(req, timeout=5, error_prefix="搜索服务健康检查失败")
+    return _load_json_response(req, timeout=timeout, error_prefix="搜索服务健康检查失败")
 
 
 def websearch(
@@ -182,7 +182,7 @@ def check_websearch_service(cfg: Config | None = None, timeout: float = 3.0) -> 
             )
             client.list_tools()
         else:
-            check_websearch_health(_get_websearch_base_url(cfg))
+            check_websearch_health(_get_websearch_base_url(cfg), timeout=timeout)
         return True
     except Exception as e:
         _log.debug("Health check failed: %s", e)
@@ -372,11 +372,11 @@ def search_and_fetch_arxiv(
 # ---------------------------------------------------------------------------
 
 
-def check_webextract_health(base_url: str | None = None) -> dict:
+def check_webextract_health(base_url: str | None = None, timeout: float = 5.0) -> dict:
     """Check whether the external web extraction service is healthy."""
     base = _resolve_base_url(base_url, "WEBEXTRACT_URL", _DEFAULT_WEBEXTRACT_URL)
     req = Request(f"{base}/health", method="GET")
-    return _load_json_response(req, timeout=5, error_prefix="提取服务健康检查失败")
+    return _load_json_response(req, timeout=timeout, error_prefix="提取服务健康检查失败")
 
 
 def webextract(url: str, pdf: bool | None = None, base_url: str | None = None) -> dict:
@@ -474,7 +474,7 @@ def check_webextract_service(cfg: Config | None = None, timeout: float = 3.0) ->
             )
             client.list_tools()
         else:
-            check_webextract_health(_get_webextract_base_url(cfg))
+            check_webextract_health(_get_webextract_base_url(cfg), timeout=timeout)
         return True
     except Exception as e:
         _log.debug("Health check failed: %s", e)

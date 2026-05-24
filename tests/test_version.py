@@ -29,5 +29,5 @@ def test_citation_version_matches_project_version():
     assert citation_match.group(1).strip() == project_match.group("version")
 
 
-def test_release_version_is_1_4_0():
-    assert __version__ == "1.4.0"
+def test_release_version_is_1_5_0():
+    assert __version__ == "1.5.0"

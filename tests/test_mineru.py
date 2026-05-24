@@ -20,6 +20,7 @@ from scholaraio.providers.mineru import (
     _plan_cloud_chunking,
     _resolve_cloud_model_version,
     _split_pdf,
+    check_server,
     cloud_safe_input_path,
     convert_pdf,
     convert_pdf_cloud,
@@ -47,6 +48,39 @@ def test_mineru_provider_and_legacy_module_commands_expose_help():
 
         assert proc.returncode == 0
         assert "Convert PDF files to Markdown" in proc.stdout
+
+
+def test_check_server_requires_mineru_file_parse_endpoint(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"paths": {"/file_parse": {"post": {}}}}
+
+    calls: list[str] = []
+
+    def fake_get(url: str, timeout: int = 5):
+        calls.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr("scholaraio.providers.mineru.requests.get", fake_get)
+
+    assert check_server("http://localhost:8000") is True
+    assert calls == ["http://localhost:8000/openapi.json"]
+
+
+def test_check_server_rejects_unrelated_fastapi_service(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"paths": {"/health": {"get": {}}}}
+
+    monkeypatch.setattr("scholaraio.providers.mineru.requests.get", lambda *_args, **_kwargs: FakeResponse())
+
+    assert check_server("http://localhost:8000") is False
 
 
 def test_convert_long_pdf_cloud_preserves_cloud_model_version(tmp_path, monkeypatch):
