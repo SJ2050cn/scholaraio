@@ -8,21 +8,21 @@ Integrations are evaluated at the workflow boundary, checking CLI/skill entrypoi
 
 ## 1. Quality Matrix
 
-| Integration / Surface | Category | Status | Verification Path / Test Evidence | Observed Result / Boundaries |
+| Integration / Surface | Category | Status | Verification Path / Test Evidence | Observed Result / Config & Version Boundaries |
 | :--- | :--- | :--- | :--- | :--- |
-| **qt-web-extractor (HTTP & MCP)** | Web / Agent | **needs-cleanup** | `extract_web` / `tests/test_webtools_source.py` | Sanitized output successfully resolves table-cell code fence corruption on Wikipedia. |
+| **qt-web-extractor (HTTP & MCP)** | Web / Agent | **needs-cleanup** | `extract_web` / `tests/test_webtools_source.py` | Sanitized output successfully resolves table-cell code fence corruption. Boundaries: `webextract.transport` (HTTP/MCP), `webextract.base_url`, `webextract.mcp_url`, `webextract.api_key`. |
 | **GUILessBingSearch** | Web / Agent | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **MinerU Local API** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
-| **MinerU Cloud CLI** | Parsing | **good** | `test_mineru.py` | Handles `mineru-open-api` subprocess calls; enforces filename constraints safely. |
+| **MinerU Cloud CLI** | Parsing | **good** | `test_mineru.py` | Handles `mineru-open-api` subprocess calls; enforces filename constraints safely. Boundaries: `ingest.mineru_api_key` / `MINERU_TOKEN`, `mineru-open-api` CLI package. |
 | **Paper2Any MCP Sidecar** | Parsing/MCP | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **Docling Fallback** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
-| **PyMuPDF Fallback** | Parsing | **good** | `test_pdf_fallback.py` | Robust extraction fallback when default parser fails. |
-| **arXiv Search (Atom API)** | Discovery | **good** | `test_arxiv_source.py` | Atom XML parser is stable; query filters match client expectations. |
-| **arXiv PDF Download** | Discovery | **good** | `test_arxiv_source.py` | Enforces `RATE_LIMIT_DELAY = 3.0` between successive paper downloads. |
+| **PyMuPDF Fallback** | Parsing | **good** | `test_pdf_fallback.py` | Robust extraction fallback when default parser fails. Boundaries: `pymupdf` / `fitz` dependency presence. |
+| **arXiv Search (Atom API)** | Discovery | **good** | `test_arxiv_source.py` | Atom XML parser is stable; query filters match client expectations. Boundaries: HTTP requests to `export.arxiv.org`. |
+| **arXiv PDF Download** | Discovery | **good** | `test_arxiv_source.py` | Enforces `RATE_LIMIT_DELAY = 3.0` spacing in `batch_download`. Boundaries: `https://arxiv.org/pdf/` endpoint. |
 | **OpenAlex Explore** | Discovery | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **Crossref / Semantic Scholar** | Discovery | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
-| **Zotero SQLite Import** | Import/Export | **good** | `test_workspace.py` | Parsed SQLite columns correctly map to `PaperMetadata`. |
-| **Zotero Web API** | Import/Export | **usable-with-caveats** | `fetch_zotero_api` / `import-zotero` | pyzotero retrieves metadata; linked/external attachments are skipped by design. |
+| **Zotero SQLite Import** | Import/Export | **good** | `test_workspace.py` | Parsed SQLite columns correctly map to `PaperMetadata`. Boundaries: Local `zotero.sqlite` database schema layout. |
+| **Zotero Web API** | Import/Export | **usable-with-caveats** | `fetch_zotero_api` / `import-zotero` | pyzotero retrieves metadata; linked/external attachments are skipped by design. Boundaries: `zotero.api_key`, `zotero.library_id`, `ZOTERO_API_KEY`, `ZOTERO_LIBRARY_ID`. |
 | **EndNote / RIS** | Import/Export | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **USPTO ODP / PPubs** | Patents | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **OpenAI-compatible Chat API** | LLM Backend | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
@@ -38,7 +38,7 @@ Integrations are evaluated at the workflow boundary, checking CLI/skill entrypoi
 | **Scientific Toolref (Quantum ESPRESSO, etc.)** | Toolref | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **AmberTools / PyMOL** | Scientific | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **rsync / SSH Backup** | System | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
-| **Setup Diagnostics** | System | **good** | `test_setup.py` | Reports dependency presence and credential state in bilingual strings. |
+| **Setup Diagnostics** | System | **good** | `test_setup.py` | Reports dependency presence and credential state in bilingual strings. Boundaries: CLI `scholaraio setup check` / `run_check` path. |
 
 ---
 
