@@ -781,3 +781,61 @@ class TestWebtoolsEnhancedExtract:
         assert result["title"] == "Page"
         captured = capsys.readouterr()
         assert "markdown body" in captured.out
+
+    def test_clean_table_code_fences_with_fixtures(self):
+        import pathlib
+        from scholaraio.providers.webtools import _clean_table_code_fences
+
+        fixtures_dir = pathlib.Path(__file__).parent / "fixtures"
+        bad_path = fixtures_dir / "wikipedia_infobox_bad.md"
+        clean_path = fixtures_dir / "wikipedia_infobox_clean.md"
+
+        assert bad_path.exists()
+        assert clean_path.exists()
+
+        bad_text = bad_path.read_text(encoding="utf-8")
+        expected_clean_text = clean_path.read_text(encoding="utf-8")
+
+        cleaned_text = _clean_table_code_fences(bad_text)
+        assert cleaned_text.strip() == expected_clean_text.strip()
+
+    def test_clean_table_code_fences_ignores_normal_structures(self):
+        from scholaraio.providers.webtools import _clean_table_code_fences
+
+        # Test normal code block outside table should not be changed
+        normal_code = (
+            "Here is a code snippet:\n"
+            "```python\n"
+            "def test():\n"
+            "    return True\n"
+            "```\n"
+            "And here is normal text."
+        )
+        assert _clean_table_code_fences(normal_code) == normal_code
+
+        # Test normal table with inline code should not be changed
+        normal_table = (
+            "| Column 1 | Column 2 |\n"
+            "| --- | --- |\n"
+            "| `inline code` | value |\n"
+        )
+        assert _clean_table_code_fences(normal_table) == normal_table
+
+    def test_extract_web_applies_cleanup_http(self, monkeypatch):
+        # Verify that HTTP path runs the clean helper
+        def fake_urlopen(req, timeout=0):
+            return _FakeResponse({
+                "title": "Page",
+                "text": "| 性别 |\n| 出生 | ```\n1902\n``` |"
+            })
+
+        def fake_check_service(cfg, timeout=3.0):
+            return True
+
+        monkeypatch.setattr("scholaraio.providers.webtools.urlopen", fake_urlopen)
+        monkeypatch.setattr("scholaraio.providers.webtools.check_webextract_service", fake_check_service)
+
+        from scholaraio.providers.webtools import extract_web
+
+        res = extract_web("https://example.com")
+        assert res["text"] == "| 性别 |\n| 出生 | `1902` |"

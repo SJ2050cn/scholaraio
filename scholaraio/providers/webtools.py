@@ -572,6 +572,44 @@ def _extract_web_mcp(url: str, *, cfg: Config | None, timeout: float) -> dict:
     }
 
 
+def _clean_table_code_fences(text: str) -> str:
+    """Sanitize Markdown table cells that contain block-level code blocks/fences.
+
+    Transforms:
+        | Col | ```\nval\n``` |
+    Into:
+        | Col | `val` |
+    """
+    if not text:
+        return ""
+
+    # Pattern to match a code block inside a table cell (bounded by pipes)
+    pattern = re.compile(
+        r"\|([^|]*?)```(?:[a-zA-Z0-9_-]*)\n(.*?)\n\s*```([^|]*?)\|",
+        re.DOTALL
+    )
+
+    def replace_match(match):
+        before = match.group(1).replace("\n", " ").strip()
+        code_content = match.group(2).replace("\n", " ").strip()
+        after = match.group(3).replace("\n", " ").strip()
+        
+        # Format the code content as inline code
+        inline_code = f"`{code_content}`" if code_content else ""
+        
+        # Assemble the cleaned cell components
+        parts = [p for p in (before, inline_code, after) if p]
+        cleaned_cell = " " + " ".join(parts) + " "
+        return f"|{cleaned_cell}|"
+
+    cleaned = text
+    prev = ""
+    while cleaned != prev:
+        prev = cleaned
+        cleaned = pattern.sub(replace_match, cleaned)
+    return cleaned
+
+
 def extract_web(
     url: str,
     *,
@@ -600,33 +638,39 @@ def extract_web(
     """
     transport = _get_webextract_transport(cfg)
     if transport == "mcp":
-        return _extract_web_mcp(url, cfg=cfg, timeout=timeout)
-    if transport != "http":
-        raise WebExtractError(f"未知 webextract transport: {transport}")
+        res = _extract_web_mcp(url, cfg=cfg, timeout=timeout)
+    else:
+        if transport != "http":
+            raise WebExtractError(f"未知 webextract transport: {transport}")
 
-    base_url = _get_webextract_base_url(cfg)
-    if not check_webextract_service(cfg, timeout=3.0):
-        raise WebExtractServiceUnavailableError(
-            f"提取服务未启动或不可达: {base_url}\n请确保 qt-web-extractor 服务已运行"
+        base_url = _get_webextract_base_url(cfg)
+        if not check_webextract_service(cfg, timeout=3.0):
+            raise WebExtractServiceUnavailableError(
+                f"提取服务未启动或不可达: {base_url}\n请确保 qt-web-extractor 服务已运行"
+            )
+
+        body: dict[str, object] = {"url": url}
+        if pdf is not None:
+            body["pdf"] = pdf
+        if include_html:
+            body["include_html"] = include_html
+
+        api_key = _get_webextract_api_key(cfg) or ""
+        req = Request(
+            f"{base_url}/extract",
+            data=json.dumps(body).encode("utf-8"),
+            headers=_headers(api_key),
+            method="POST",
         )
+        try:
+            res = _load_json_response(req, timeout=int(timeout), error_prefix="提取失败")
+        except RuntimeError as e:
+            raise WebExtractError(str(e)) from e
 
-    body: dict[str, object] = {"url": url}
-    if pdf is not None:
-        body["pdf"] = pdf
-    if include_html:
-        body["include_html"] = include_html
+    if isinstance(res, dict) and "text" in res and res["text"]:
+        res["text"] = _clean_table_code_fences(res["text"])
 
-    api_key = _get_webextract_api_key(cfg) or ""
-    req = Request(
-        f"{base_url}/extract",
-        data=json.dumps(body).encode("utf-8"),
-        headers=_headers(api_key),
-        method="POST",
-    )
-    try:
-        return _load_json_response(req, timeout=int(timeout), error_prefix="提取失败")
-    except RuntimeError as e:
-        raise WebExtractError(str(e)) from e
+    return res
 
 
 def extract_and_display(
