@@ -11,6 +11,23 @@ scholaraio <command> --help
 
 The command groups below are aligned with the current codebase.
 
+## Setup And Agent Integration
+
+```text
+scholaraio setup
+scholaraio setup check
+scholaraio setup agent
+scholaraio setup agent --apply
+scholaraio setup agent check
+```
+
+- `setup` runs the interactive installation and configuration wizard.
+- `setup check` reports dependency, parser, API-key, optional service, and runtime directory status.
+- `setup agent` previews cross-project agent integration for supported coding agents. It covers shell runtime wiring, Codex/OpenClaw skill discovery, project-local wrappers for supported hosts, and Claude Code plugin instructions.
+- `setup agent --apply` performs the automatic steps. Restart the target agent session afterward so it reloads newly registered skills and wrapper files.
+- `setup agent check` reports the current agent-integration state without changing files.
+- `--target-project` writes project-local wrappers with absolute local paths. Review the managed block before committing those files to a shared repository.
+
 ## Core Commands
 
 ```text

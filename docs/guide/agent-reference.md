@@ -36,6 +36,18 @@ Cross-agent discovery wrappers expose the same skill set through:
 - `.qwen/skills/`
 - `skills/`
 
+For reuse from another project, prefer the automated registration command:
+
+```bash
+scholaraio setup agent
+scholaraio setup agent --apply
+scholaraio setup agent check
+```
+
+It previews and applies shell runtime wiring, Codex/OpenClaw global skill discovery, project-local wrappers for supported hosts, and Claude Code plugin instructions where automation is not possible.
+
+Project-local wrappers are local machine integration blocks. They may contain absolute paths to the active ScholarAIO checkout and config, so review them before committing target-project files.
+
 Project guidance for maintaining skills:
 
 - keep `SKILL.md` focused on entry instructions and decision rules

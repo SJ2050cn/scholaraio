@@ -538,6 +538,71 @@ def _build_parser() -> argparse.ArgumentParser:
     p_setup_check.add_argument(
         "--lang", choices=["en", "zh"], default="en", help="Output language (en or zh; default: en)"
     )
+    p_setup_agent = p_setup_sub.add_parser(
+        "agent",
+        help="Configure cross-project agent integrations",
+        description="Preview or apply ScholarAIO cross-project setup for supported coding agents.",
+    )
+    p_setup_agent.set_defaults(func=cmd_setup)
+
+    def _add_setup_agent_args(
+        parser_obj: argparse.ArgumentParser, *, include_apply: bool, suppress_defaults: bool = False
+    ) -> None:
+        agent_choices = ["all", "codex", "openclaw", "claude", "qwen", "cursor", "cline", "windsurf", "copilot"]
+        default = argparse.SUPPRESS if suppress_defaults else None
+        bool_default = argparse.SUPPRESS if suppress_defaults else False
+        lang_default = argparse.SUPPRESS if suppress_defaults else "en"
+        parser_obj.add_argument(
+            "--agent",
+            action="append",
+            choices=agent_choices,
+            default=default,
+            help="Agent target to configure; repeatable. Defaults to all supported agents.",
+        )
+        parser_obj.add_argument(
+            "--all",
+            dest="setup_agent_all",
+            action="store_true",
+            default=bool_default,
+            help="Configure all agents",
+        )
+        parser_obj.add_argument(
+            "--target-project",
+            default=default,
+            help="Project directory for project-local wrappers",
+        )
+        parser_obj.add_argument(
+            "--shell",
+            default=default,
+            help="Shell rc file to update; defaults to ~/.bashrc or ~/.zshrc",
+        )
+        parser_obj.add_argument(
+            "--no-shell",
+            action="store_true",
+            default=bool_default,
+            help="Skip shell PATH/SCHOLARAIO_CONFIG setup",
+        )
+        parser_obj.add_argument(
+            "--force",
+            action="store_true",
+            default=bool_default,
+            help="Replace conflicting ScholarAIO symlinks when safe",
+        )
+        parser_obj.add_argument(
+            "--lang", choices=["en", "zh"], default=lang_default, help="Output language (en or zh; default: en)"
+        )
+        if include_apply:
+            parser_obj.add_argument(
+                "--apply",
+                action="store_true",
+                default=bool_default,
+                help="Apply automatic setup actions",
+            )
+
+    _add_setup_agent_args(p_setup_agent, include_apply=True)
+    p_setup_agent_sub = p_setup_agent.add_subparsers(dest="setup_agent_action", metavar="[check]")
+    p_setup_agent_check = p_setup_agent_sub.add_parser("check", help="Check cross-project agent integration status")
+    _add_setup_agent_args(p_setup_agent_check, include_apply=False, suppress_defaults=True)
 
     # --- backup ---
     p_backup = sub.add_parser(

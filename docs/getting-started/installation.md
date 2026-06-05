@@ -63,6 +63,14 @@ Or check what's already configured:
 scholaraio setup check
 ```
 
+To make the same ScholarAIO checkout available from other coding-agent projects, preview and apply agent integration separately:
+
+```bash
+scholaraio setup agent
+scholaraio setup agent --apply
+scholaraio setup agent check
+```
+
 `setup check` is the most complete initial diagnostic surface. It covers:
 
 - core setup items: dependency groups, `config.yaml`, LLM key, MinerU / Docling availability, parser recommendation, Graphviz `dot`, Inkscape, `contact_email`, and directory state

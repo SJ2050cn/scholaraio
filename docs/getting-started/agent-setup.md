@@ -13,7 +13,7 @@ The right setup depends on which agent you use and whether it supports native sk
 |-------------------|------------------|
 | Try ScholarAIO, inspect the codebase, or contribute | Open this repository directly |
 | Use ScholarAIO from any project in Claude Code | Install the Claude Code plugin |
-| Reuse ScholarAIO skills in Codex / OpenClaw | Clone the repo once, then symlink the skills into `~/.agents/skills/` |
+| Reuse ScholarAIO from another project in Codex / OpenClaw / Qwen / Cursor / Cline / Windsurf / Copilot | Run `scholaraio setup agent` |
 
 ## Open This Repository Directly
 
@@ -66,6 +66,8 @@ If an instruction starts turning into a long checklist, it probably belongs in a
 
 Claude Code has the cleanest cross-project install path because ScholarAIO ships as a plugin and marketplace entry.
 
+`scholaraio setup agent` prints the same plugin commands as manual actions, but it does not run them for you. Claude Code slash-commands must be entered inside Claude Code.
+
 ### Install into any project
 
 Run these commands inside Claude Code as slash-commands, not in your system shell:
@@ -91,7 +93,55 @@ After installation, start a new Claude Code session in your target project. Scho
 
 This is the recommended way to make ScholarAIO available outside this repository.
 
-## Codex / OpenClaw Skill Registration
+## Automated Agent Registration
+
+For cross-project use, ScholarAIO can preview and apply the parts that are safe to automate:
+
+```bash
+scholaraio setup agent
+scholaraio setup agent --apply
+scholaraio setup agent check
+```
+
+The command separates three layers:
+
+- CLI runtime: `SCHOLARAIO_CONFIG` plus the installed `scholaraio` command path
+- skill discovery: global or project-local pointers to `.claude/skills/`
+- host instructions: plugin commands or wrapper files for agents without a global registry
+
+By default, `scholaraio setup agent` is a preview and does not modify files. Add `--apply` to perform automatic actions. Restart your agent session after applying changes so newly registered skills are discovered.
+
+Project-local wrappers created with `--target-project` contain absolute paths for this machine, such as the active ScholarAIO config and skills directory. Review those managed blocks before committing them to a shared repository.
+
+Common scoped runs:
+
+```bash
+# Codex / OpenClaw global skill registration plus shell config
+scholaraio setup agent --agent codex --apply
+
+# Prepare project-local wrappers for supported hosts
+scholaraio setup agent --all --target-project ~/repos/my-software-project --apply
+
+# Inspect status in Chinese
+scholaraio setup agent check --lang zh
+```
+
+### What Can Be Automated
+
+| Target | Automatic action |
+|--------|------------------|
+| Codex / OpenClaw | Creates or verifies `~/.agents/skills/scholaraio -> <repo>/.claude/skills` |
+| Shell runtime | Adds a managed block for `SCHOLARAIO_CONFIG` and the ScholarAIO command path |
+| Qwen | Creates project-local `.qwen/QWEN.md` and `.qwen/skills` when `--target-project` is supplied |
+| Cursor | Creates project-local `.cursor/rules/scholaraio.mdc` when `--target-project` is supplied |
+| Cline | Adds a managed block to project-local `.clinerules` when `--target-project` is supplied |
+| Windsurf | Adds a managed block to project-local `.windsurfrules` when `--target-project` is supplied |
+| GitHub Copilot | Adds a managed block to project-local `.github/copilot-instructions.md` when `--target-project` is supplied |
+| Claude Code | Prints plugin slash-commands; install still happens inside Claude Code |
+
+### Manual Fallback
+
+If you cannot let the setup command modify user files, use the same steps manually.
 
 Codex-style agents can use ScholarAIO outside this repository through native skill discovery.
 
@@ -166,7 +216,7 @@ This registers the skills, not the full repository instructions. If you want the
 |-----------|-------------|
 | You are evaluating ScholarAIO itself | Open this repository directly |
 | You want ScholarAIO in Claude Code across projects | Claude Code plugin |
-| You want ScholarAIO skills in Codex / OpenClaw across projects | Global skill symlink |
+| You want ScholarAIO in other coding-agent projects | `scholaraio setup agent --apply` |
 
 ## Verify the Setup
 
@@ -174,7 +224,7 @@ Use one of these checks after installation:
 
 - In this repository: ask your agent to search or show a paper and confirm it can see ScholarAIO instructions or skills.
 - In Claude Code plugin mode: verify `/scholaraio:search` appears.
-- In Codex / OpenClaw: restart the agent and ask it to use the `search` or `show` skill.
+- In Codex / OpenClaw: run `scholaraio setup agent check`, restart the agent, and ask it to use the `search` or `show` skill.
 
 ## Related Guides
 

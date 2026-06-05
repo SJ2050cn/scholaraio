@@ -19,6 +19,34 @@ scholaraio setup check --lang zh
 - 只有在会影响后续决策时，才回头问用户一个关键问题
 - 对失败项要用“现状 + 原因 + 建议动作”的方式转述，不要只说“没装”或“不可达”
 
+### 1.1 跨项目 agent 接入
+
+如果用户想在其他软件项目目录里复用 ScholarAIO，或者问“agent 是否能自己看到 ScholarAIO skills 并决定什么时候用”，优先使用自动化命令：
+
+```bash
+scholaraio setup agent
+scholaraio setup agent --apply
+scholaraio setup agent check --lang zh
+```
+
+说明时要区分三层：
+
+- **CLI runtime**：`SCHOLARAIO_CONFIG` 和 `scholaraio` 命令路径，让任何目录都能调用当前 ScholarAIO runtime。
+- **skill discovery**：Codex / OpenClaw 的 `~/.agents/skills/scholaraio`，以及 Qwen 等 target-project wrapper。
+- **host-specific entry**：Claude Code 插件命令、Cursor/Cline/Windsurf/Copilot 项目 wrapper 等。
+
+默认先跑 `scholaraio setup agent` 预览；只有用户明确要求代为配置，或已经确认预览内容时，才跑 `scholaraio setup agent --apply`。执行后提醒用户重启 agent session，让新注册的 skills / wrapper 被重新发现。
+
+如果使用 `--target-project`，要提醒用户这些 wrapper 是本机集成块，里面可能包含当前 ScholarAIO checkout / config 的绝对路径；提交到共享仓库前必须检查 managed block。
+
+不要再默认手工追加 `.bashrc` 或手工创建 symlink，除非：
+
+- `setup agent` 命令不可用；
+- 用户所在平台不允许自动创建 symlink / wrapper；
+- 用户明确要求手工步骤。
+
+Claude Code 是例外：`setup agent` 只会打印插件 slash-command；插件安装仍需用户在 Claude Code 内执行。
+
 ## 1.5 核心配置 vs 附加配置
 
 默认把 setup 分成两层：

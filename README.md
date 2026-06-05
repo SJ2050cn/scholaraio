@@ -122,14 +122,18 @@ ScholarAIO is designed to be **agent-agnostic**, but different agents expose dif
 | Agent / IDE | Open this repo directly | Reuse from another project |
 |-------------|-------------------------|-----------------------------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `CLAUDE.md` + `.claude/skills/` | Claude plugin marketplace |
-| [Codex](https://openai.com/codex) / OpenClaw | `AGENTS.md` + `.agents/skills/` | Symlink skills into `~/.agents/skills/` |
-| [Cline](https://github.com/cline/cline) | `.clinerules` + `.claude/skills/` | CLI + skills |
-| [Qwen](https://qwen.ai/) | `.qwen/QWEN.md` + `.qwen/skills/` | CLI + skills |
-| [Cursor](https://cursor.sh) | `.cursor/rules/scholaraio.mdc` + `AGENTS.md` (`.cursorrules` legacy fallback) | CLI + skills |
-| [Windsurf](https://codeium.com/windsurf) | `.windsurfrules` | CLI + skills |
-| [GitHub Copilot](https://github.com/features/copilot) | `.github/copilot-instructions.md` | CLI + skills |
+| [Codex](https://openai.com/codex) / OpenClaw | `AGENTS.md` + `.agents/skills/` | `scholaraio setup agent` |
+| [Cline](https://github.com/cline/cline) | `.clinerules` + `.claude/skills/` | `scholaraio setup agent --target-project ...` |
+| [Qwen](https://qwen.ai/) | `.qwen/QWEN.md` + `.qwen/skills/` | `scholaraio setup agent --target-project ...` |
+| [Cursor](https://cursor.sh) | `.cursor/rules/scholaraio.mdc` + `AGENTS.md` (`.cursorrules` legacy fallback) | `scholaraio setup agent --target-project ...` |
+| [Windsurf](https://codeium.com/windsurf) | `.windsurfrules` | `scholaraio setup agent --target-project ...` |
+| [GitHub Copilot](https://github.com/features/copilot) | `.github/copilot-instructions.md` | `scholaraio setup agent --target-project ...` |
 
 Skills follow the open [AgentSkills.io](https://agentskills.io) standard, and `.agents/skills/` and `.qwen/skills/` are symlinks to `.claude/skills/` so different agents can discover and reuse the same skills. Qwen-specific project context lives in `.qwen/QWEN.md`.
+
+For reuse from another project, run `scholaraio setup agent` to preview shell, skill-discovery, and project-wrapper changes; add `--apply` to perform the automatic steps.
+
+Wrappers created with `--target-project` include local machine paths; review the managed block before committing those files to a shared repository.
 
 **Migrating from existing tools?** Import directly from Endnote (XML/RIS) and Zotero (Web API or local SQLite), with PDFs, metadata, and references brought over together. If your current network has publisher access, `scholaraio fetch-pdf` can also pull DOI or landing-page PDFs into the normal ingest flow or refresh canonical PDFs for existing library records.
 
@@ -140,6 +144,7 @@ Skills follow the open [AgentSkills.io](https://agentskills.io) standard, and `.
 ScholarAIO works with a minimal setup and can be expanded as needed.
 
 - `scholaraio setup` walks you through the basics.
+- `scholaraio setup agent` configures cross-project agent discovery and CLI runtime wiring.
 - An LLM API key is optional but recommended for more robust metadata extraction and content completion.
 - A MinerU token is optional but recommended, and free. You can also deploy MinerU or Docling locally for PDF parsing.
 - `scholaraio setup check` shows what is installed, what is optional, and what is missing.
