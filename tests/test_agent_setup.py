@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -76,6 +77,34 @@ def test_apply_codex_plan_is_idempotent(tmp_path):
     assert "SCHOLARAIO_CONFIG" in shell_text
     assert {action.status for action in applied.actions} == {"created", "updated"}
     assert {action.status for action in applied_again.actions} == {"already_ok"}
+
+
+def test_shell_setup_quotes_paths_without_command_expansion(tmp_path):
+    root = _repo_root(tmp_path / "root-$(touch pwned)")
+    home = tmp_path / "home"
+    shell = home / ".bashrc"
+
+    apply_agent_setup_plan(build_agent_setup_plan(_cfg(root), agents=["codex"], home=home, shell_path=shell))
+
+    result = subprocess.run(
+        [
+            "sh",
+            "-c",
+            '. "$1"; printf "%s\n%s\n" "$SCHOLARAIO_CONFIG" "$PATH"',
+            "sh",
+            str(shell),
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin"},
+    )
+
+    config, path_value = result.stdout.splitlines()
+    assert config == str(root / "config.yaml")
+    assert path_value.startswith(f"{root / '.venv' / 'bin'}:")
+    assert not (tmp_path / "pwned").exists()
 
 
 def test_existing_non_link_global_skill_target_blocks_apply(tmp_path):

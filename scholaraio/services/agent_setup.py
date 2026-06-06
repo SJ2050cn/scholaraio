@@ -8,6 +8,7 @@ idempotent.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -275,11 +276,11 @@ def _resolve_shell_path(shell_path: Path | str | None, home: Path) -> Path | Non
 def _plan_shell_action(shell_path: Path, config_path: Path, executable: Path | None) -> AgentSetupAction:
     content_lines = [
         "# Managed by `scholaraio setup agent`.",
-        f'export SCHOLARAIO_CONFIG="{_shell_quote(config_path)}"',
+        f"export SCHOLARAIO_CONFIG={_shell_quote(config_path)}",
     ]
     detail = "sets SCHOLARAIO_CONFIG"
     if executable is not None:
-        content_lines.append(f'export PATH="{_shell_quote(executable.parent)}:$PATH"')
+        content_lines.append(f"export PATH={_shell_quote(executable.parent)}:$PATH")
         detail = "sets SCHOLARAIO_CONFIG and places the ScholarAIO command on PATH"
     else:
         content_lines.append("# ScholarAIO command was not found; install the package or activate its venv.")
@@ -561,15 +562,13 @@ def _apply_managed_block_action(action: AgentSetupAction) -> AgentSetupAction:
         return replace(action, status="already_ok", detail="managed block already present")
     if begin in existing and end in existing:
         updated = _replace_managed_block(existing, begin, end, block)
-        status = "updated"
         detail = "updated managed block"
     else:
         separator = "\n\n" if existing and not existing.endswith("\n\n") else ""
         updated = existing + separator + block.rstrip() + "\n"
-        status = "updated"
         detail = "appended managed block"
     action.target.write_text(updated, encoding="utf-8")
-    return replace(action, status=status, detail=detail)
+    return replace(action, status="updated", detail=detail)
 
 
 def _managed_block(begin: str, end: str, content: str) -> str:
@@ -598,4 +597,4 @@ def _status_mark(status: ActionStatus) -> str:
 
 
 def _shell_quote(path: Path) -> str:
-    return str(path).replace('"', '\\"')
+    return shlex.quote(str(path))
