@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Automated cross-project agent setup** ([#111](https://github.com/ZimoLiao/scholaraio/pull/111)): Added `scholaraio setup agent` preview, apply, and check workflows for shell runtime wiring, Codex/OpenClaw skill discovery, Claude Code plugin instructions, and project-local wrappers for Qwen, Cursor, Cline, Windsurf, and GitHub Copilot.
 - **Nature workflow bridge skill** ([#107](https://github.com/ZimoLiao/scholaraio/issues/107)): Added a ScholarAIO `nature-workflow` bridge skill that routes Nature Portfolio writing and figure workflows to the upstream `nature-skills` repository when installed, keeps ScholarAIO-native fallbacks explicit, documents the install and quick-start path, and includes deterministic plus product-demo fixtures that generate reviewable manuscript, figure, slide, and QA artifacts.
 
+### Fixed
+
+- **Webextract Markdown table-cell cleanup** ([#110](https://github.com/ZimoLiao/scholaraio/pull/110)): Sanitized malformed block-level code fences emitted inside `qt-web-extractor` table cells before HTTP/MCP extraction results reach `webextract` and ingest consumers, while preserving standalone fenced code blocks and pipe characters inside code-cell content.
+
 ## [1.5.0] — 2026-05-24
 
 ### Added

@@ -572,6 +572,159 @@ def _extract_web_mcp(url: str, *, cfg: Config | None, timeout: float) -> dict:
     }
 
 
+def _split_table_row_cells(row_text: str) -> list[str]:
+    cells: list[str] = []
+    current: list[str] = []
+    in_code_fence = False
+    i = 0
+    while i < len(row_text):
+        if row_text.startswith("```", i):
+            in_code_fence = not in_code_fence
+            current.append("```")
+            i += 3
+            continue
+        char = row_text[i]
+        if char == "|" and not in_code_fence:
+            cells.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        i += 1
+    cells.append("".join(current))
+    return cells
+
+
+def _clean_single_row(row_text: str) -> str:
+    cells = _split_table_row_cells(row_text)
+    cleaned_cells: list[str] = []
+
+    for i, cell in enumerate(cells):
+        if i == 0 and not cell.strip():
+            cleaned_cells.append(cell)
+            continue
+        if i == len(cells) - 1 and not cell.strip() and row_text.endswith("|"):
+            cleaned_cells.append(cell)
+            continue
+
+        if "```" in cell:
+            fence_count = cell.count("```")
+            cell_to_clean = cell + "\n```" if fence_count % 2 != 0 else cell
+            parts = cell_to_clean.split("```")
+            cleaned_parts = []
+            for j, part in enumerate(parts):
+                if j % 2 == 0:
+                    cleaned_parts.append(part.replace("\n", " "))
+                else:
+                    block = part
+                    if block.startswith("\n"):
+                        block = block[1:]
+                    else:
+                        block_lines = block.split("\n", 1)
+                        if len(block_lines) > 1:
+                            first_line = block_lines[0].strip()
+                            if re.match(r"^[a-zA-Z0-9_-]+$", first_line):
+                                block = block_lines[1]
+                    block_clean = block.replace("\n", " ").strip()
+                    if block_clean:
+                        cleaned_parts.append(f"`{block_clean}`")
+                    else:
+                        cleaned_parts.append("")
+            cleaned_cell = "".join(cleaned_parts)
+            cleaned_cell = " " + cleaned_cell.strip() + " "
+            cleaned_cells.append(cleaned_cell)
+        else:
+            cleaned_cells.append(cell.replace("\n", " "))
+
+    res = "|".join(cleaned_cells)
+    if not res.endswith("|"):
+        res += "|"
+    return res
+
+
+def _clean_table_code_fences(text: str) -> str:
+    """Sanitize Markdown table cells that contain block-level code blocks/fences.
+
+    Transforms:
+        | Col | ```\nval\n``` |
+    Into:
+        | Col | `val` |
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    cleaned_lines: list[str] = []
+    current_row_lines: list[str] = []
+    in_multiline_row = False
+    in_code_block = False
+
+    def flush_current_row():
+        nonlocal in_multiline_row, current_row_lines, in_code_block
+        if current_row_lines:
+            row_text = "\n".join(current_row_lines)
+            cleaned_row = _clean_single_row(row_text)
+            cleaned_lines.append(cleaned_row)
+            current_row_lines = []
+        in_multiline_row = False
+        in_code_block = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if in_multiline_row:
+            num_fences = stripped.count("```")
+            if stripped.startswith("|") and (stripped.count("|") >= 2 or "```" in stripped):
+                flush_current_row()
+                # fall through to process as a new row start below
+            else:
+                if num_fences % 2 != 0:
+                    in_code_block = not in_code_block
+
+                if not in_code_block:
+                    if stripped.endswith("|"):
+                        current_row_lines.append(line)
+                        flush_current_row()
+                        continue
+                    elif not stripped:
+                        flush_current_row()
+                        cleaned_lines.append(line)
+                        continue
+                    elif stripped.startswith("```"):
+                        flush_current_row()
+                        # fall through to process as normal
+
+                if in_multiline_row:
+                    current_row_lines.append(line)
+                    continue
+
+        if stripped.startswith("|") and (stripped.count("|") >= 2 or "```" in stripped):
+            if "```" in stripped:
+                num_fences = stripped.count("```")
+                in_code = num_fences % 2 != 0
+                if not in_code and stripped.endswith("|"):
+                    cleaned_lines.append(_clean_single_row(line))
+                else:
+                    in_multiline_row = True
+                    in_code_block = in_code
+                    current_row_lines = [line]
+            else:
+                if stripped.endswith("|"):
+                    cleaned_lines.append(line)
+                else:
+                    in_multiline_row = True
+                    in_code_block = False
+                    current_row_lines = [line]
+        else:
+            cleaned_lines.append(line)
+
+    flush_current_row()
+
+    result = "\n".join(cleaned_lines)
+    if text.endswith("\n") and not result.endswith("\n"):
+        result += "\n"
+    return result
+
+
 def extract_web(
     url: str,
     *,
@@ -600,33 +753,39 @@ def extract_web(
     """
     transport = _get_webextract_transport(cfg)
     if transport == "mcp":
-        return _extract_web_mcp(url, cfg=cfg, timeout=timeout)
-    if transport != "http":
-        raise WebExtractError(f"未知 webextract transport: {transport}")
+        res = _extract_web_mcp(url, cfg=cfg, timeout=timeout)
+    else:
+        if transport != "http":
+            raise WebExtractError(f"未知 webextract transport: {transport}")
 
-    base_url = _get_webextract_base_url(cfg)
-    if not check_webextract_service(cfg, timeout=3.0):
-        raise WebExtractServiceUnavailableError(
-            f"提取服务未启动或不可达: {base_url}\n请确保 qt-web-extractor 服务已运行"
+        base_url = _get_webextract_base_url(cfg)
+        if not check_webextract_service(cfg, timeout=3.0):
+            raise WebExtractServiceUnavailableError(
+                f"提取服务未启动或不可达: {base_url}\n请确保 qt-web-extractor 服务已运行"
+            )
+
+        body: dict[str, object] = {"url": url}
+        if pdf is not None:
+            body["pdf"] = pdf
+        if include_html:
+            body["include_html"] = include_html
+
+        api_key = _get_webextract_api_key(cfg) or ""
+        req = Request(
+            f"{base_url}/extract",
+            data=json.dumps(body).encode("utf-8"),
+            headers=_headers(api_key),
+            method="POST",
         )
+        try:
+            res = _load_json_response(req, timeout=int(timeout), error_prefix="提取失败")
+        except RuntimeError as e:
+            raise WebExtractError(str(e)) from e
 
-    body: dict[str, object] = {"url": url}
-    if pdf is not None:
-        body["pdf"] = pdf
-    if include_html:
-        body["include_html"] = include_html
+    if isinstance(res, dict) and "text" in res and res["text"]:
+        res["text"] = _clean_table_code_fences(res["text"])
 
-    api_key = _get_webextract_api_key(cfg) or ""
-    req = Request(
-        f"{base_url}/extract",
-        data=json.dumps(body).encode("utf-8"),
-        headers=_headers(api_key),
-        method="POST",
-    )
-    try:
-        return _load_json_response(req, timeout=int(timeout), error_prefix="提取失败")
-    except RuntimeError as e:
-        raise WebExtractError(str(e)) from e
+    return res
 
 
 def extract_and_display(
