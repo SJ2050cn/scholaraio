@@ -572,9 +572,31 @@ def _extract_web_mcp(url: str, *, cfg: Config | None, timeout: float) -> dict:
     }
 
 
+def _split_table_row_cells(row_text: str) -> list[str]:
+    cells: list[str] = []
+    current: list[str] = []
+    in_code_fence = False
+    i = 0
+    while i < len(row_text):
+        if row_text.startswith("```", i):
+            in_code_fence = not in_code_fence
+            current.append("```")
+            i += 3
+            continue
+        char = row_text[i]
+        if char == "|" and not in_code_fence:
+            cells.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        i += 1
+    cells.append("".join(current))
+    return cells
+
+
 def _clean_single_row(row_text: str) -> str:
-    cells = row_text.split("|")
-    cleaned_cells = []
+    cells = _split_table_row_cells(row_text)
+    cleaned_cells: list[str] = []
 
     for i, cell in enumerate(cells):
         if i == 0 and not cell.strip():

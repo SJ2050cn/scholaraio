@@ -4,6 +4,8 @@ This document records the quality, reachability, and output validation status of
 
 Integrations are evaluated at the workflow boundary, checking CLI/skill entrypoints, provider implementations, setup diagnostics, output formatting, fallback behaviors, and failure handling. A config test or a broad unit-test filename is not enough evidence to mark an integration surface as Good.
 
+This audit is not a declaration that the full third-party toolchain is adapted or verified. Each row claims only the evidence listed in that row; everything else remains inventory until a focused live or workflow-boundary pass verifies it.
+
 Status is intentionally conservative:
 
 - **good**: workflow-boundary evidence exists, including commands, representative output, and failure handling.
