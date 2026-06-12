@@ -32,7 +32,7 @@ Read these in roughly this order:
 3. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md) for repo-open vs plugin or cross-project setup.
 4. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md) for the current user-facing CLI surface.
 5. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md) for deeper agent, runtime, and skill organization details.
-6. [`docs/PLANS.md`](docs/PLANS.md) and [`docs/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/exec-plans/completed/scholaraio-upgrade-plan.md) before changing runtime layout, migration, or compatibility behavior.
+6. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) and [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md) before changing runtime layout, migration, or compatibility behavior.
 
 ## Skill-First Workflow
 
@@ -128,12 +128,12 @@ project MCP JSON. Codex uses its own MCP registry; see
 Use the smallest doc that answers the question:
 
 - Repository knowledge map: [`docs/DESIGN.md`](docs/DESIGN.md)
-- Plan map and execution history: [`docs/PLANS.md`](docs/PLANS.md), [`docs/exec-plans/`](docs/exec-plans/index.md)
-- Knowledge quality and cleanup: [`docs/QUALITY_SCORE.md`](docs/QUALITY_SCORE.md)
+- Plan map and execution history: [`docs/internal/PLANS.md`](docs/internal/PLANS.md), [`docs/internal/exec-plans/`](docs/internal/exec-plans/index.md)
+- Knowledge quality and cleanup: [`docs/internal/QUALITY_SCORE.md`](docs/internal/QUALITY_SCORE.md)
 - Agent and skill organization: [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
 - Setup and installation: [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md), [`docs/getting-started/installation.md`](docs/getting-started/installation.md), [`docs/getting-started/configuration.md`](docs/getting-started/configuration.md)
 - CLI behavior: [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)
 - Writing workflows: [`docs/guide/writing.md`](docs/guide/writing.md)
-- Runtime layout and migration: [`docs/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/exec-plans/completed/scholaraio-upgrade-plan.md), [`docs/design-docs/directory-structure-spec.md`](docs/design-docs/directory-structure-spec.md), [`docs/design-docs/directory-migration-sequence.md`](docs/design-docs/directory-migration-sequence.md), [`docs/design-docs/migration-mechanism-spec.md`](docs/design-docs/migration-mechanism-spec.md)
+- Runtime layout and migration: [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md), [`docs/design-docs/directory-structure-spec.md`](docs/design-docs/directory-structure-spec.md), [`docs/design-docs/directory-migration-sequence.md`](docs/design-docs/directory-migration-sequence.md), [`docs/design-docs/migration-mechanism-spec.md`](docs/design-docs/migration-mechanism-spec.md)
 
 When in doubt, keep this file short, keep skills procedural, and keep deep detail in dedicated reference docs.

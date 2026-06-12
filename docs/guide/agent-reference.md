@@ -33,14 +33,12 @@ become the encyclopedia.
 Key indexes:
 
 - `docs/DESIGN.md`: repository knowledge map and directory roles
-- `docs/PLANS.md`: active and completed execution plan map
-- `docs/QUALITY_SCORE.md`: knowledge quality scorecard and cleanup rules
 - `docs/design-docs/index.md`: architecture and runtime design authorities
-- `docs/exec-plans/index.md`: plan storage conventions
-- `docs/references/index.md`: audits and inspection references
-- `docs/validation/index.md`: validation matrices and reports
 - `docs/generated/index.md`: generated reference rules
 - `docs/product-specs/index.md`: product behavior spec rules
+
+Internal plans, validation records, and audits are intentionally excluded from
+the published documentation site.
 
 ## How Skills Are Organized
 
@@ -175,8 +173,6 @@ Use the smallest doc that answers the question:
 
 - Product overview: [`docs/index.md`](../index.md)
 - Repository knowledge map: [`docs/DESIGN.md`](../DESIGN.md)
-- Plan map: [`docs/PLANS.md`](../PLANS.md)
-- Knowledge quality score: [`docs/QUALITY_SCORE.md`](../QUALITY_SCORE.md)
 - Agent setup: [`docs/getting-started/agent-setup.md`](../getting-started/agent-setup.md)
 - Installation: [`docs/getting-started/installation.md`](../getting-started/installation.md)
 - Configuration: [`docs/getting-started/configuration.md`](../getting-started/configuration.md)
@@ -185,8 +181,6 @@ Use the smallest doc that answers the question:
 - Runtime layout authority: [`docs/design-docs/directory-structure-spec.md`](../design-docs/directory-structure-spec.md)
 - Migration execution order: [`docs/design-docs/directory-migration-sequence.md`](../design-docs/directory-migration-sequence.md)
 - Migration control-plane contract: [`docs/design-docs/migration-mechanism-spec.md`](../design-docs/migration-mechanism-spec.md)
-- Upgrade validation matrix: [`docs/validation/upgrade-validation-matrix.md`](../validation/upgrade-validation-matrix.md)
-- Upgrade entry point: [`docs/exec-plans/completed/scholaraio-upgrade-plan.md`](../exec-plans/completed/scholaraio-upgrade-plan.md)
 
 The maintenance rule for this repo is simple:
 

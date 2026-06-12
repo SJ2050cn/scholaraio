@@ -13,7 +13,7 @@ agents and maintainers.
 | Knowledge map | B+ | `docs/DESIGN.md` and per-directory indexes exist | Add generated reference refresh checks |
 | Runtime layout docs | A- | Design, migration, validation, and upgrade docs are separated | Keep tests aligned with new paths |
 | Plans | B | Active and completed plans are separated | Move stale active plans after implementation |
-| Validation evidence | B+ | Matrix and reports live under `docs/validation/` | Add freshness metadata checks |
+| Validation evidence | B+ | Matrix and reports live under `docs/internal/validation/` | Add freshness metadata checks |
 | Generated references | C | Directory exists with rules | Add first generated CLI/schema snapshots |
 
 ## Mechanical Checks
@@ -29,6 +29,6 @@ agents and maintainers.
 - If a plan becomes the source of truth for a stable decision, promote the
   decision into a design doc or product spec.
 - If a validation report is superseded, keep the report but update
-  `docs/validation/index.md` so agents can see which evidence is current.
+  `docs/internal/validation/index.md` so agents can see which evidence is current.
 - If a generated file cannot be refreshed, either fix the generation command or
   move it out of `docs/generated/`.

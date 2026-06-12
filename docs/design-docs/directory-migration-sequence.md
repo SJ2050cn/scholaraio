@@ -12,7 +12,7 @@ the active breaking-cleanup runtime.
 
 - this document remains the historical execution record for the compatibility-window generation
 - current runtime behavior is no longer compatibility-window behavior: legacy public import facades are removed and legacy runtime roots are no longer auto-opened
-- the active breaking-generation execution authority is `docs/exec-plans/completed/breaking-compat-cleanup-plan.md`
+- the active breaking-generation execution authority is kept in internal release-gate records
 - the hardened post-migration user cleanup flow is now `scholaraio migrate finalize --confirm`
 
 ## 1. Purpose
@@ -83,8 +83,8 @@ Historical audited facts from the compatibility-window generation:
 
 The following bullets intentionally preserve the pre-cleanup compatibility
 language used during migration planning. In the active release generation, legacy
-public import facades have been removed; see `docs/exec-plans/completed/breaking-compat-cleanup-plan.md`
-and `docs/guide/agent-reference.md` for the current contract.
+public import facades have been removed; see the internal breaking-cleanup
+release gate and `docs/guide/agent-reference.md` for the current contract.
 
 - `scholaraio/core/config.py` now exposes a much broader runtime-path accessor surface and routes `ensure_dirs()` through those accessors, which lowers path-migration risk but does not yet remove direct path construction in downstream modules
 - `scholaraio/core/config.py` now resolves `index_db`, `metrics_db_path`, and `topics_model_dir` through logical `state_root` subdirectories for fresh installs, while still auto-detecting existing legacy `data/index.db`, `data/metrics.db`, and `data/topic_model/` stores
@@ -362,9 +362,7 @@ Objective:
 
 - eliminate hardcoded runtime paths from leaf modules and orchestration code by first exposing them through `Config`
 
-Primary audit reference:
-
-- `docs/references/config-surface-audit.md`
+Primary audit reference: internal config-surface audit records.
 
 Required additions in or around `scholaraio/core/config.py`:
 

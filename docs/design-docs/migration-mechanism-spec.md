@@ -9,7 +9,7 @@ Scope: implementation-facing migration control-plane specification for future ru
 2026-04-24 breaking cleanup note:
 
 - this document remains the compatibility-window control-plane specification
-- the active breaking-generation cleanup authority is `docs/exec-plans/completed/breaking-compat-cleanup-plan.md`
+- the active breaking-generation cleanup authority is kept in internal release-gate records
 - real migrated user roots should now complete post-migration cleanup through `scholaraio migrate finalize --confirm`
 
 2026-04-23 implementation note:
@@ -53,8 +53,8 @@ This document is a companion to the existing migration documents:
   - defines execution order for path abstraction and physical moves
 - `docs/design-docs/user-data-migration-strategy.md`
   - defines the user-data preservation and product strategy
-- `docs/validation/upgrade-validation-matrix.md`
-  - defines the release gates, migration rehearsal matrix, and evidence requirements that must wrap the control plane
+- internal validation records define the release gates, migration rehearsal
+  matrix, and evidence requirements that must wrap the control plane
 
 This document fills the missing middle layer:
 

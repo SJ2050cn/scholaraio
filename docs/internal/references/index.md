@@ -16,4 +16,4 @@ not themselves execution plans.
 
 - Keep observations specific enough for an agent to verify against code.
 - Promote stable decisions into `docs/design-docs/`.
-- Move release evidence into `docs/validation/`.
+- Move release evidence into `docs/internal/validation/`.

@@ -14,5 +14,5 @@ No product spec is currently authoritative.
 
 - Add a product spec when behavior spans multiple commands, skills, or user
   workflows.
-- Keep implementation sequencing in `docs/exec-plans/`.
+- Keep implementation sequencing in internal maintenance records.
 - Keep architecture constraints in `docs/design-docs/`.

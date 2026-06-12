@@ -9,14 +9,14 @@ resume work without relying on external context.
 
 ## Active Plans
 
-- `docs/exec-plans/active/2026-06-05-001-feat-agent-setup-automation-plan.md`
+- `docs/internal/exec-plans/active/2026-06-05-001-feat-agent-setup-automation-plan.md`
   tracks the agent setup automation feature.
 
 ## Completed Plans
 
-- `docs/exec-plans/completed/scholaraio-upgrade-plan.md` is the current upgrade
+- `docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md` is the current upgrade
   entry point for the 1.4 runtime-layout cleanup record.
-- `docs/exec-plans/completed/breaking-compat-cleanup-plan.md` records the
+- `docs/internal/exec-plans/completed/breaking-compat-cleanup-plan.md` records the
   breaking cleanup generation for legacy import and runtime layout behavior.
 
 ## Planning Rules
@@ -27,5 +27,5 @@ resume work without relying on external context.
   to mark status.
 - Promote long-lived decisions from plans into `docs/design-docs/` or
   `docs/product-specs/`.
-- Keep known follow-up work in `docs/exec-plans/tech-debt-tracker.md` when it is
+- Keep known follow-up work in `docs/internal/exec-plans/tech-debt-tracker.md` when it is
   too small or too cross-cutting for a full plan.

@@ -50,5 +50,5 @@ See [API Reference](api/index.md) for Python module documentation.
 
 ScholarAIO is agent-first infrastructure, so repository-local documentation is
 part of the runtime surface for agents. Start with [Repository Knowledge
-Design](DESIGN.md), then follow the relevant design, plan, reference, generated,
-or validation index.
+Design](DESIGN.md), then follow the relevant design, product-spec, generated
+reference, guide, or API page.

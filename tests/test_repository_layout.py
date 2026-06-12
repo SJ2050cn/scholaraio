@@ -9,13 +9,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
-CONFIG_SURFACE_AUDIT = DOCS / "references" / "config-surface-audit.md"
+INTERNAL_DOCS = DOCS / "internal"
+CONFIG_SURFACE_AUDIT = INTERNAL_DOCS / "references" / "config-surface-audit.md"
 MIGRATION_SEQUENCE = DOCS / "design-docs" / "directory-migration-sequence.md"
 RUNTIME_STRUCTURE_SPEC = DOCS / "design-docs" / "directory-structure-spec.md"
 MIGRATION_MECHANISM_SPEC = DOCS / "design-docs" / "migration-mechanism-spec.md"
 USER_DATA_MIGRATION_STRATEGY = DOCS / "design-docs" / "user-data-migration-strategy.md"
-UPGRADE_PLAN = DOCS / "exec-plans" / "completed" / "scholaraio-upgrade-plan.md"
-UPGRADE_VALIDATION_MATRIX = DOCS / "validation" / "upgrade-validation-matrix.md"
+UPGRADE_PLAN = INTERNAL_DOCS / "exec-plans" / "completed" / "scholaraio-upgrade-plan.md"
+UPGRADE_VALIDATION_MATRIX = INTERNAL_DOCS / "validation" / "upgrade-validation-matrix.md"
 PROJECT_GUIDES = (ROOT / "AGENTS.md", ROOT / "CLAUDE.md")
 CANONICAL_IMPLEMENTATION_ROOTS = (
     ROOT / "scholaraio" / "core",
@@ -224,8 +225,8 @@ def test_upgrade_entry_and_user_migration_strategy_reflect_current_breaking_clea
     user_strategy = USER_DATA_MIGRATION_STRATEGY.read_text(encoding="utf-8")
 
     assert "Last Updated: 2026-04-24" in upgrade_plan
-    assert "docs/validation/upgrade-validation-matrix.md" in upgrade_plan
-    assert "docs/exec-plans/completed/breaking-compat-cleanup-plan.md" in upgrade_plan
+    assert "docs/internal/validation/upgrade-validation-matrix.md" in upgrade_plan
+    assert "docs/internal/exec-plans/completed/breaking-compat-cleanup-plan.md" in upgrade_plan
     assert "上述 7 份权威文档" in upgrade_plan
     assert "breaking cleanup generation is now the active release gate" in upgrade_plan
     assert "migrate finalize --confirm" in upgrade_plan
@@ -277,7 +278,7 @@ def test_upgrade_validation_matrix_tracks_current_release_gate_and_migration_sur
     assert "seed `fresh-root/` only with new-layout stores" in validation
     assert "`toolref fetch`" in validation
     assert "cp ../scholaraio/config.yaml" in validation
-    assert "docs/validation/upgrade-validation-matrix.md" in mechanism_spec
+    assert "internal validation records define the release gates" in mechanism_spec
     assert "migrate upgrade --confirm" in mechanism_spec
     assert "migrate finalize --confirm" in mechanism_spec
     assert "default migration posture SHOULD therefore be: migrate durable content trees" in user_strategy

@@ -13,4 +13,4 @@ by future agents.
 - `completed/`: historical plans and release gates.
 - `tech-debt-tracker.md`: small follow-up items that do not yet need a full plan.
 
-See also `docs/PLANS.md` for the current repository-level plan map.
+See also `docs/internal/PLANS.md` for the current repository-level plan map.

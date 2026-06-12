@@ -19,6 +19,6 @@ must stay true, not just what one implementation plan happened to do.
 ## Rules
 
 - Put durable architecture decisions here.
-- Keep execution checklists in `docs/exec-plans/`.
-- Keep validation evidence in `docs/validation/`.
+- Keep execution checklists and validation evidence in internal maintenance docs,
+  not in the published design-doc surface.
 - Link new design docs from this index before treating them as authority.

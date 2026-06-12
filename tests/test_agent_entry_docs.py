@@ -38,37 +38,50 @@ def test_entry_docs_stay_light_and_point_to_deep_reference() -> None:
     assert _line_count("AGENTS_CN.md") < 180
 
 
-def test_repository_knowledge_system_is_indexed_for_agents() -> None:
-    required_docs = (
+def test_repository_knowledge_system_keeps_public_and_internal_boundaries() -> None:
+    required_public_docs = (
         "docs/DESIGN.md",
-        "docs/PLANS.md",
-        "docs/QUALITY_SCORE.md",
         "docs/design-docs/index.md",
         "docs/product-specs/index.md",
-        "docs/exec-plans/index.md",
-        "docs/exec-plans/tech-debt-tracker.md",
-        "docs/references/index.md",
         "docs/generated/index.md",
-        "docs/validation/index.md",
     )
-    for rel_path in required_docs:
+    required_internal_docs = (
+        "docs/internal/PLANS.md",
+        "docs/internal/QUALITY_SCORE.md",
+        "docs/internal/exec-plans/index.md",
+        "docs/internal/exec-plans/tech-debt-tracker.md",
+        "docs/internal/references/index.md",
+        "docs/internal/validation/index.md",
+    )
+    for rel_path in required_public_docs + required_internal_docs:
         assert (ROOT / rel_path).exists(), f"{rel_path} should exist"
 
     design = _read("docs/DESIGN.md")
     for directory in (
         "docs/design-docs/",
         "docs/product-specs/",
-        "docs/exec-plans/",
-        "docs/references/",
         "docs/generated/",
-        "docs/validation/",
     ):
         assert directory in design
+    for internal_directory in (
+        "docs/internal/exec-plans/",
+        "docs/internal/references/",
+        "docs/internal/validation/",
+    ):
+        assert internal_directory not in design
 
     mkdocs = _read("mkdocs.yml")
     assert "Repository Knowledge:" in mkdocs
     assert "Knowledge Map: DESIGN.md" in mkdocs
-    assert "Execution Plans: exec-plans/index.md" in mkdocs
+    assert "internal/" in mkdocs
+    for private_nav in (
+        "      - Plan Map:",
+        "      - Quality Score:",
+        "      - Execution Plans:",
+        "      - References:",
+        "      - Validation:",
+    ):
+        assert private_nav not in mkdocs
 
 
 def test_wrappers_and_setup_docs_defer_to_shared_entry_and_reference() -> None:
@@ -94,12 +107,12 @@ def test_agent_reference_doc_exists_and_links_core_surfaces() -> None:
     assert ".claude/skills/" in content
     assert "docs/DESIGN.md" in content
     assert "docs/design-docs/index.md" in content
-    assert "docs/exec-plans/index.md" in content
-    assert "docs/exec-plans/completed/scholaraio-upgrade-plan.md" in content
-    assert "docs/validation/upgrade-validation-matrix.md" in content
     assert "docs/guide/cli-reference.md" in content
     assert "workspace.yaml" in content
     assert "notes.md" in content
+    assert "docs/internal/exec-plans/" not in content
+    assert "docs/internal/references/" not in content
+    assert "docs/internal/validation/" not in content
 
 
 def test_user_and_skill_docs_do_not_claim_implicit_legacy_runtime_detection() -> None:
