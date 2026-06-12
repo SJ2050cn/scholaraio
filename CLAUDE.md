@@ -4,7 +4,7 @@ This file is the Claude Code project-memory entrypoint. It intentionally stays l
 
 - durable project facts and navigation live here
 - reusable procedures belong in `.claude/skills/`
-- deep reference lives in `docs/guide/agent-reference.md`
+- deep reference lives in the indexed `docs/` knowledge base, starting at `docs/DESIGN.md` and `docs/guide/agent-reference.md`
 
 Claude-specific notes:
 

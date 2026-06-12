@@ -12,12 +12,12 @@ the active breaking-cleanup runtime.
 
 - this document remains the historical execution record for the compatibility-window generation
 - current runtime behavior is no longer compatibility-window behavior: legacy public import facades are removed and legacy runtime roots are no longer auto-opened
-- the active breaking-generation execution authority is `docs/development/breaking-compat-cleanup-plan.md`
+- the active breaking-generation execution authority is kept in internal release-gate records
 - the hardened post-migration user cleanup flow is now `scholaraio migrate finalize --confirm`
 
 ## 1. Purpose
 
-This document defines the recommended execution order for migrating ScholarAIO toward the target directory structure described in `docs/development/directory-structure-spec.md`.
+This document defines the recommended execution order for migrating ScholarAIO toward the target directory structure described in `docs/design-docs/directory-structure-spec.md`.
 
 This is an implementation-order document, not a vision document. Its job is to answer:
 
@@ -30,7 +30,7 @@ This is an implementation-order document, not a vision document. Its job is to a
 
 This document should be read together with:
 
-- `docs/development/migration-mechanism-spec.md`
+- `docs/design-docs/migration-mechanism-spec.md`
 
 That companion document defines the control-plane contract (`instance.json`, `migration.lock`, journal, verification, cleanup gating). This document defines when that machinery must appear in the execution order.
 
@@ -83,8 +83,8 @@ Historical audited facts from the compatibility-window generation:
 
 The following bullets intentionally preserve the pre-cleanup compatibility
 language used during migration planning. In the active release generation, legacy
-public import facades have been removed; see `docs/development/breaking-compat-cleanup-plan.md`
-and `docs/guide/agent-reference.md` for the current contract.
+public import facades have been removed; see the internal breaking-cleanup
+release gate and `docs/guide/agent-reference.md` for the current contract.
 
 - `scholaraio/core/config.py` now exposes a much broader runtime-path accessor surface and routes `ensure_dirs()` through those accessors, which lowers path-migration risk but does not yet remove direct path construction in downstream modules
 - `scholaraio/core/config.py` now resolves `index_db`, `metrics_db_path`, and `topics_model_dir` through logical `state_root` subdirectories for fresh installs, while still auto-detecting existing legacy `data/index.db`, `data/metrics.db`, and `data/topic_model/` stores
@@ -362,9 +362,7 @@ Objective:
 
 - eliminate hardcoded runtime paths from leaf modules and orchestration code by first exposing them through `Config`
 
-Primary audit reference:
-
-- `docs/development/config-surface-audit.md`
+Primary audit reference: internal config-surface audit records.
 
 Required additions in or around `scholaraio/core/config.py`:
 
@@ -605,7 +603,7 @@ Required changes:
 
 Required reference:
 
-- align this phase with `docs/development/migration-mechanism-spec.md`
+- align this phase with `docs/design-docs/migration-mechanism-spec.md`
 
 Why this phase exists here:
 

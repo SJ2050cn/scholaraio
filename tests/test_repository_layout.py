@@ -8,6 +8,15 @@ from importlib.machinery import PathFinder
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+DOCS = ROOT / "docs"
+INTERNAL_DOCS = DOCS / "internal"
+CONFIG_SURFACE_AUDIT = INTERNAL_DOCS / "references" / "config-surface-audit.md"
+MIGRATION_SEQUENCE = DOCS / "design-docs" / "directory-migration-sequence.md"
+RUNTIME_STRUCTURE_SPEC = DOCS / "design-docs" / "directory-structure-spec.md"
+MIGRATION_MECHANISM_SPEC = DOCS / "design-docs" / "migration-mechanism-spec.md"
+USER_DATA_MIGRATION_STRATEGY = DOCS / "design-docs" / "user-data-migration-strategy.md"
+UPGRADE_PLAN = INTERNAL_DOCS / "exec-plans" / "completed" / "scholaraio-upgrade-plan.md"
+UPGRADE_VALIDATION_MATRIX = INTERNAL_DOCS / "validation" / "upgrade-validation-matrix.md"
 PROJECT_GUIDES = (ROOT / "AGENTS.md", ROOT / "CLAUDE.md")
 CANONICAL_IMPLEMENTATION_ROOTS = (
     ROOT / "scholaraio" / "core",
@@ -176,9 +185,9 @@ def test_project_guides_describe_migrated_runtime_modules_by_canonical_namespace
             assert row not in content, f"{guide.name} still has stale module row {row}"
 
 
-def test_migration_development_docs_do_not_restate_resolved_path_authority_gaps() -> None:
-    config_audit = (ROOT / "docs" / "development" / "config-surface-audit.md").read_text(encoding="utf-8")
-    migration_sequence = (ROOT / "docs" / "development" / "directory-migration-sequence.md").read_text(encoding="utf-8")
+def test_migration_knowledge_docs_do_not_restate_resolved_path_authority_gaps() -> None:
+    config_audit = CONFIG_SURFACE_AUDIT.read_text(encoding="utf-8")
+    migration_sequence = MIGRATION_SEQUENCE.read_text(encoding="utf-8")
 
     stale_phrases = (
         "Status: Draft",
@@ -212,12 +221,12 @@ def test_migration_development_docs_do_not_restate_resolved_path_authority_gaps(
 
 
 def test_upgrade_entry_and_user_migration_strategy_reflect_current_breaking_cleanup_generation() -> None:
-    upgrade_plan = (ROOT / "docs" / "development" / "scholaraio-upgrade-plan.md").read_text(encoding="utf-8")
-    user_strategy = (ROOT / "docs" / "development" / "user-data-migration-strategy.md").read_text(encoding="utf-8")
+    upgrade_plan = UPGRADE_PLAN.read_text(encoding="utf-8")
+    user_strategy = USER_DATA_MIGRATION_STRATEGY.read_text(encoding="utf-8")
 
     assert "Last Updated: 2026-04-24" in upgrade_plan
-    assert "docs/development/upgrade-validation-matrix.md" in upgrade_plan
-    assert "docs/development/breaking-compat-cleanup-plan.md" in upgrade_plan
+    assert "docs/internal/validation/upgrade-validation-matrix.md" in upgrade_plan
+    assert "docs/internal/exec-plans/completed/breaking-compat-cleanup-plan.md" in upgrade_plan
     assert "上述 7 份权威文档" in upgrade_plan
     assert "breaking cleanup generation is now the active release gate" in upgrade_plan
     assert "migrate finalize --confirm" in upgrade_plan
@@ -233,9 +242,9 @@ def test_upgrade_entry_and_user_migration_strategy_reflect_current_breaking_clea
 
 
 def test_upgrade_validation_matrix_tracks_current_release_gate_and_migration_surface() -> None:
-    validation = (ROOT / "docs" / "development" / "upgrade-validation-matrix.md").read_text(encoding="utf-8")
-    mechanism_spec = (ROOT / "docs" / "development" / "migration-mechanism-spec.md").read_text(encoding="utf-8")
-    user_strategy = (ROOT / "docs" / "development" / "user-data-migration-strategy.md").read_text(encoding="utf-8")
+    validation = UPGRADE_VALIDATION_MATRIX.read_text(encoding="utf-8")
+    mechanism_spec = MIGRATION_MECHANISM_SPEC.read_text(encoding="utf-8")
+    user_strategy = USER_DATA_MIGRATION_STRATEGY.read_text(encoding="utf-8")
 
     assert "Status: Compatibility-window validation authority" in validation
     assert "Last Updated: 2026-04-24" in validation
@@ -269,15 +278,15 @@ def test_upgrade_validation_matrix_tracks_current_release_gate_and_migration_sur
     assert "seed `fresh-root/` only with new-layout stores" in validation
     assert "`toolref fetch`" in validation
     assert "cp ../scholaraio/config.yaml" in validation
-    assert "docs/development/upgrade-validation-matrix.md" in mechanism_spec
+    assert "internal validation records define the release gates" in mechanism_spec
     assert "migrate upgrade --confirm" in mechanism_spec
     assert "migrate finalize --confirm" in mechanism_spec
     assert "default migration posture SHOULD therefore be: migrate durable content trees" in user_strategy
 
 
 def test_authoritative_migration_specs_are_not_stale_drafts() -> None:
-    structure_spec = (ROOT / "docs" / "development" / "directory-structure-spec.md").read_text(encoding="utf-8")
-    mechanism_spec = (ROOT / "docs" / "development" / "migration-mechanism-spec.md").read_text(encoding="utf-8")
+    structure_spec = RUNTIME_STRUCTURE_SPEC.read_text(encoding="utf-8")
+    mechanism_spec = MIGRATION_MECHANISM_SPEC.read_text(encoding="utf-8")
 
     assert "Status: Draft" not in structure_spec
     assert "Status: Draft" not in mechanism_spec
@@ -288,9 +297,9 @@ def test_authoritative_migration_specs_are_not_stale_drafts() -> None:
 
 
 def test_workspace_topology_docs_keep_named_workspaces_free_form_and_system_outputs_reserved() -> None:
-    structure_spec = (ROOT / "docs" / "development" / "directory-structure-spec.md").read_text(encoding="utf-8")
-    migration_sequence = (ROOT / "docs" / "development" / "directory-migration-sequence.md").read_text(encoding="utf-8")
-    user_strategy = (ROOT / "docs" / "development" / "user-data-migration-strategy.md").read_text(encoding="utf-8")
+    structure_spec = RUNTIME_STRUCTURE_SPEC.read_text(encoding="utf-8")
+    migration_sequence = MIGRATION_SEQUENCE.read_text(encoding="utf-8")
+    user_strategy = USER_DATA_MIGRATION_STRATEGY.read_text(encoding="utf-8")
 
     assert "`workspace/<name>/` MUST remain a free-form user project tree" in structure_spec
     assert "system-owned or cross-workspace outputs SHOULD converge under `workspace/_system/`" in structure_spec
@@ -355,8 +364,8 @@ def test_workspace_topology_docs_keep_named_workspaces_free_form_and_system_outp
 
 
 def test_migration_docs_reference_canonical_workspace_explore_and_insights_modules() -> None:
-    migration_sequence = (ROOT / "docs" / "development" / "directory-migration-sequence.md").read_text(encoding="utf-8")
-    user_strategy = (ROOT / "docs" / "development" / "user-data-migration-strategy.md").read_text(encoding="utf-8")
+    migration_sequence = MIGRATION_SEQUENCE.read_text(encoding="utf-8")
+    user_strategy = USER_DATA_MIGRATION_STRATEGY.read_text(encoding="utf-8")
 
     for content in (migration_sequence, user_strategy):
         assert "\n- `scholaraio/workspace.py`\n" not in content
@@ -372,7 +381,7 @@ def test_migration_docs_reference_canonical_workspace_explore_and_insights_modul
 
 
 def test_config_surface_audit_references_canonical_store_and_service_modules() -> None:
-    config_audit = (ROOT / "docs" / "development" / "config-surface-audit.md").read_text(encoding="utf-8")
+    config_audit = CONFIG_SURFACE_AUDIT.read_text(encoding="utf-8")
 
     assert "`scholaraio/proceedings.py`" not in config_audit
     assert "`scholaraio/explore.py:`" not in config_audit
@@ -388,8 +397,8 @@ def test_config_surface_audit_references_canonical_store_and_service_modules() -
 
 
 def test_upgrade_docs_lock_policy_decisions_for_manifest_mounts_skills_and_compat_cleanup() -> None:
-    migration_sequence = (ROOT / "docs" / "development" / "directory-migration-sequence.md").read_text(encoding="utf-8")
-    upgrade_plan = (ROOT / "docs" / "development" / "scholaraio-upgrade-plan.md").read_text(encoding="utf-8")
+    migration_sequence = MIGRATION_SEQUENCE.read_text(encoding="utf-8")
+    upgrade_plan = UPGRADE_PLAN.read_text(encoding="utf-8")
 
     assert (
         "compatibility fallback readers stay in place through a full deprecation window and may be removed only in a later breaking-layout generation"

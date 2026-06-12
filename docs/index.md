@@ -33,6 +33,7 @@ scholaraio setup
 See [Installation](getting-started/installation.md) for detailed instructions.
 If you are working from a local clone or contributing to ScholarAIO itself, use the editable install path shown there instead.
 See [Agent Setup](getting-started/agent-setup.md) for repo-open vs plugin setup paths.
+See [Repository Knowledge Map](DESIGN.md) for the agent-facing documentation structure.
 See [Agent Reference](guide/agent-reference.md) for the deeper agent, skill, and runtime map.
 See [Translation Guide](guide/translate.md) for translation, resume, and portable export behavior.
 See [Insights Guide](guide/insights.md) for reading/search behavior analytics.
@@ -44,3 +45,10 @@ See [API Reference](api/index.md) for Python module documentation.
 |------|-----------|----------|
 | **Agent** | Claude Code CLI | Full research workflow via natural language |
 | **CLI** | Terminal | Scripting and automation |
+
+## Repository Knowledge
+
+ScholarAIO is agent-first infrastructure, so repository-local documentation is
+part of the runtime surface for agents. Start with [Repository Knowledge
+Design](DESIGN.md), then follow the relevant design, product-spec, generated
+reference, guide, or API page.

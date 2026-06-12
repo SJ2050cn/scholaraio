@@ -45,7 +45,7 @@ pip install -e ".[full]"
 scholaraio setup
 ```
 
-Then open the repository in Codex, Claude Code, or another supported agent. In this setup, the agent gets the fullest experience: bundled instructions, local skills, the CLI, and the complete codebase context are all available directly. For Claude Code plugins, Codex/OpenClaw skill registration, and other setup paths, see [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md).
+Then open the repository in Codex, Claude Code, or another supported agent. In this setup, the agent gets the fullest experience: bundled instructions, local skills, the CLI, the repository knowledge map in [`docs/DESIGN.md`](docs/DESIGN.md), and the complete codebase context are all available directly. For Claude Code plugins, Codex/OpenClaw skill registration, and other setup paths, see [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md).
 
 ## Upgrading To 1.4
 
@@ -174,8 +174,9 @@ data/spool/inbox-proceedings/ # Dedicated proceedings ingest inbox
 
 Upgrading an older runtime layout? See [Upgrading To 1.4](#upgrading-to-14).
 
-Agent entry docs → [`CLAUDE.md`](CLAUDE.md) or [`AGENTS.md`](AGENTS.md)
-Deep agent reference → [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
+- Agent entry docs: [`CLAUDE.md`](CLAUDE.md) or [`AGENTS.md`](AGENTS.md)
+- Repository knowledge map: [`docs/DESIGN.md`](docs/DESIGN.md)
+- Deep agent reference: [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
 
 ## Citation
 

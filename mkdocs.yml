@@ -5,7 +5,8 @@ repo_url: https://github.com/zimoliao/scholaraio
 repo_name: zimoliao/scholaraio
 
 exclude_docs: |
-  development/
+  archive/
+  internal/
   superpowers/
 
 theme:
@@ -53,6 +54,11 @@ nav:
       - Academic Survey Writing: writing-guide/academic-survey-writing-guide.md
       - Academic Beamer Guide: writing-guide/academic-beamer-guide.md
       - Graphviz Diagram Guide: writing-guide/graphviz-guide.md
+  - Repository Knowledge:
+      - Knowledge Map: DESIGN.md
+      - Design Docs: design-docs/index.md
+      - Product Specs: product-specs/index.md
+      - Generated References: generated/index.md
   - API Reference: api/index.md
   - Contributing: contributing.md
   - Changelog: changelog.md

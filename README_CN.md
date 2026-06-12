@@ -45,7 +45,7 @@ pip install -e ".[full]"
 scholaraio setup
 ```
 
-这样一来，agent 能得到最完整的使用体验：仓库内置指令、本地 skills、CLI 和完整代码上下文都会直接可用。Claude Code 插件、Codex/OpenClaw skills 注册，以及其他使用路径的详细说明，详见 [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)。
+这样一来，agent 能得到最完整的使用体验：仓库内置指令、本地 skills、CLI、[`docs/DESIGN.md`](docs/DESIGN.md) 中的仓库知识地图，以及完整代码上下文都会直接可用。Claude Code 插件、Codex/OpenClaw skills 注册，以及其他使用路径的详细说明，详见 [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)。
 
 ## 升级到 1.4
 
@@ -173,8 +173,9 @@ data/spool/inbox-proceedings/ # proceedings 专用 inbox
 
 从旧版 runtime layout 升级时，请看上面的[升级到 1.4](#升级到-14)。
 
-Agent 入口文档 → [`CLAUDE.md`](CLAUDE.md) 或 [`AGENTS.md`](AGENTS.md)
-深入 agent 参考 → [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
+- Agent 入口文档：[`CLAUDE.md`](CLAUDE.md) 或 [`AGENTS.md`](AGENTS.md)
+- 仓库知识地图：[`docs/DESIGN.md`](docs/DESIGN.md)
+- 深入 agent 参考：[`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
 
 ## 引用
 

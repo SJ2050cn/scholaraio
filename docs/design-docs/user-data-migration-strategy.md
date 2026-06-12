@@ -26,7 +26,7 @@ The goal is not to optimize for the cleanest directory tree on day one. The goal
 - explicit verification and rollback
 - compatibility-first upgrades before physical data moves
 
-This document intentionally focuses on migration strategy, not implementation sequencing. The lower-level execution order is covered separately in `docs/development/directory-migration-sequence.md`.
+This document intentionally focuses on migration strategy, not implementation sequencing. The lower-level execution order is covered separately in `docs/design-docs/directory-migration-sequence.md`.
 
 ## 2. Design Position
 
@@ -637,7 +637,7 @@ It SHOULD NOT mean:
 
 The implementation-facing companion document now lives at:
 
-- `docs/development/migration-mechanism-spec.md`
+- `docs/design-docs/migration-mechanism-spec.md`
 
 That document defines:
 
@@ -652,6 +652,6 @@ This strategy document remains the higher-level user-data policy document. The m
 
 The execution-order companion document remains:
 
-- `docs/development/directory-migration-sequence.md`
+- `docs/design-docs/directory-migration-sequence.md`
 
 That document defines when `Config` path authority, workspace compatibility work, migration control-plane work, and physical directory moves should happen relative to each other.

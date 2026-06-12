@@ -54,15 +54,15 @@ Status is intentionally conservative:
 
 ### 2.1 qt-web-extractor (HTTP & MCP)
 * **CLI/Skill Entrypoint**:
-  * CLI: `scholaraio webextract <url>` (implemented in `cmd_webextract` inside [web.py](../../scholaraio/interfaces/cli/web.py))
+  * CLI: `scholaraio webextract <url>` (implemented in `cmd_webextract` inside `scholaraio/interfaces/cli/web.py`)
   * Skill: `.claude/skills/webextract`
 * **Provider/Service Implementation Path**:
-  * [webtools.py:extract_web](../../scholaraio/providers/webtools.py)
+  * `scholaraio/providers/webtools.py:extract_web`
 * **Setup Diagnostics**:
-  * Diagnostic path exists through `scholaraio setup check` (calls `_optional_webtool_detail` inside [setup.py](../../scholaraio/services/setup.py)), which executes `check_webextract_service` to verify that the HTTP/MCP endpoint responds. This PR does not include live daemon evidence from that path.
+  * Diagnostic path exists through `scholaraio setup check` (calls `_optional_webtool_detail` inside `scholaraio/services/setup.py`), which executes `check_webextract_service` to verify that the HTTP/MCP endpoint responds. This PR does not include live daemon evidence from that path.
 * **Output Quality & Validation**:
   * Outputs parsed GFM Markdown. Output quality is protected by `_clean_table_code_fences` to sanitize malformed block code fences in Wikipedia/infobox table cells, resolving broken table rendering.
-  * Verified via unit and fixture coverage: [wikipedia_infobox_bad.md](../../tests/fixtures/wikipedia_infobox_bad.md), [wikipedia_infobox_clean.md](../../tests/fixtures/wikipedia_infobox_clean.md), and regression tests for standalone fenced code blocks near table or pipe-prefixed lines.
+  * Verified via unit and fixture coverage: `tests/fixtures/wikipedia_infobox_bad.md`, `tests/fixtures/wikipedia_infobox_clean.md`, and regression tests for standalone fenced code blocks near table or pipe-prefixed lines.
 * **Fallback Behavior**:
   * Configured via `webextract.transport` (HTTP or MCP). When configured as HTTP, failure to connect triggers fallback hint to MCP or setup checks.
 * **Failure Handling**:

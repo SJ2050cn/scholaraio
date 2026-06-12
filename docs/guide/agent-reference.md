@@ -1,6 +1,6 @@
 # Agent Reference
 
-This document is the deeper reference for agents and maintainers. The root entry docs such as `AGENTS.md`, `CLAUDE.md`, and `.qwen/QWEN.md` are intentionally kept lighter and should stay focused on durable project facts, hard constraints, and navigation.
+This document is the deeper reference for agents and maintainers. The root entry docs such as `AGENTS.md`, `CLAUDE.md`, and `.qwen/QWEN.md` are intentionally kept lighter and should stay focused on durable project facts, hard constraints, and navigation. For the full repository knowledge map, start at `docs/DESIGN.md`.
 
 ## Instruction Layering
 
@@ -23,6 +23,22 @@ Practical rule:
 - if the content is a durable fact or invariant, keep it in the entry doc
 - if the content is a reusable multi-step workflow, make it a skill
 - if the content is long-form reference, keep it in docs or skill supporting files
+
+## Repository Knowledge System
+
+ScholarAIO treats repository-local Markdown as the system of record for agent
+context. `AGENTS.md` is the map injected early in agent sessions; it should not
+become the encyclopedia.
+
+Key indexes:
+
+- `docs/DESIGN.md`: repository knowledge map and directory roles
+- `docs/design-docs/index.md`: architecture and runtime design authorities
+- `docs/generated/index.md`: generated reference rules
+- `docs/product-specs/index.md`: product behavior spec rules
+
+Internal plans, validation records, and audits are intentionally excluded from
+the published documentation site.
 
 ## How Skills Are Organized
 
@@ -156,16 +172,15 @@ Useful mental model:
 Use the smallest doc that answers the question:
 
 - Product overview: [`docs/index.md`](../index.md)
+- Repository knowledge map: [`docs/DESIGN.md`](../DESIGN.md)
 - Agent setup: [`docs/getting-started/agent-setup.md`](../getting-started/agent-setup.md)
 - Installation: [`docs/getting-started/installation.md`](../getting-started/installation.md)
 - Configuration: [`docs/getting-started/configuration.md`](../getting-started/configuration.md)
 - CLI reference: [`docs/guide/cli-reference.md`](cli-reference.md)
 - Writing workflows: [`docs/guide/writing.md`](writing.md)
-- Runtime layout authority: [`docs/development/directory-structure-spec.md`](../development/directory-structure-spec.md)
-- Migration execution order: [`docs/development/directory-migration-sequence.md`](../development/directory-migration-sequence.md)
-- Migration control-plane contract: [`docs/development/migration-mechanism-spec.md`](../development/migration-mechanism-spec.md)
-- Upgrade validation matrix: [`docs/development/upgrade-validation-matrix.md`](../development/upgrade-validation-matrix.md)
-- Upgrade entry point: [`docs/development/scholaraio-upgrade-plan.md`](../development/scholaraio-upgrade-plan.md)
+- Runtime layout authority: [`docs/design-docs/directory-structure-spec.md`](../design-docs/directory-structure-spec.md)
+- Migration execution order: [`docs/design-docs/directory-migration-sequence.md`](../design-docs/directory-migration-sequence.md)
+- Migration control-plane contract: [`docs/design-docs/migration-mechanism-spec.md`](../design-docs/migration-mechanism-spec.md)
 
 The maintenance rule for this repo is simple:
 

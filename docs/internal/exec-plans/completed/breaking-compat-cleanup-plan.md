@@ -7,12 +7,12 @@ Last Updated: 2026-04-24
 This document defines the **post-compatibility-window cleanup** for ScholarAIO.
 It is intentionally separate from the compatibility-window execution docs:
 
-- `docs/development/scholaraio-upgrade-plan.md`
-- `docs/development/directory-migration-sequence.md`
-- `docs/development/migration-mechanism-spec.md`
-- `docs/development/user-data-migration-strategy.md`
-- `docs/development/config-surface-audit.md`
-- `docs/development/upgrade-validation-matrix.md`
+- `docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`
+- `docs/design-docs/directory-migration-sequence.md`
+- `docs/design-docs/migration-mechanism-spec.md`
+- `docs/design-docs/user-data-migration-strategy.md`
+- `docs/internal/references/config-surface-audit.md`
+- `docs/internal/validation/upgrade-validation-matrix.md`
 
 Those documents governed the non-breaking upgrade generation. This document
 governs the **breaking cleanup generation** where compatibility shims, legacy

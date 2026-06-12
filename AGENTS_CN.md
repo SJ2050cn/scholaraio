@@ -4,7 +4,7 @@
 
 - 这里只放持久有效的项目事实和硬约束
 - 多步骤流程放进 skills
-- 深度参考材料放进 `docs/guide/agent-reference.md`
+- 深度参考材料放进带索引的 `docs/` 知识库
 
 ## ScholarAIO 是什么
 
@@ -28,10 +28,11 @@ ScholarAIO 是一个 AI-native research terminal。用户通过 coding agent 用
 建议按这个顺序看：
 
 1. [`README.md`](README.md)：产品定位和顶层结构
-2. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)：直接开仓库 vs 插件 / 跨项目接入
-3. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)：当前 CLI 面
-4. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)：更深的 agent、runtime、skill 组织说明
-5. [`docs/development/scholaraio-upgrade-plan.md`](docs/development/scholaraio-upgrade-plan.md)：涉及运行时布局、迁移、兼容层时先看
+2. [`docs/DESIGN.md`](docs/DESIGN.md)：仓库知识地图
+3. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)：直接开仓库 vs 插件 / 跨项目接入
+4. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)：当前 CLI 面
+5. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)：更深的 agent、runtime、skill 组织说明
+6. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) 和 [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md)：涉及运行时布局、迁移、兼容层时先看
 
 ## Skill 优先工作流
 
@@ -120,10 +121,13 @@ breaking cleanup generation 已移除 `scholaraio.index`、`scholaraio.workspace
 
 按最小必要原则阅读：
 
+- 仓库知识地图：[`docs/DESIGN.md`](docs/DESIGN.md)
+- 计划地图与执行历史：[`docs/internal/PLANS.md`](docs/internal/PLANS.md)、[`docs/internal/exec-plans/`](docs/internal/exec-plans/index.md)
+- 知识质量与清理：[`docs/internal/QUALITY_SCORE.md`](docs/internal/QUALITY_SCORE.md)
 - Agent 与 skill 组织：[`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
 - 安装与配置：[`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)、[`docs/getting-started/installation.md`](docs/getting-started/installation.md)、[`docs/getting-started/configuration.md`](docs/getting-started/configuration.md)
 - CLI 行为：[`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)
 - 写作工作流：[`docs/guide/writing.md`](docs/guide/writing.md)
-- 运行时布局与迁移：[`docs/development/scholaraio-upgrade-plan.md`](docs/development/scholaraio-upgrade-plan.md)、[`docs/development/directory-structure-spec.md`](docs/development/directory-structure-spec.md)、[`docs/development/directory-migration-sequence.md`](docs/development/directory-migration-sequence.md)、[`docs/development/migration-mechanism-spec.md`](docs/development/migration-mechanism-spec.md)
+- 运行时布局与迁移：[`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md)、[`docs/design-docs/directory-structure-spec.md`](docs/design-docs/directory-structure-spec.md)、[`docs/design-docs/directory-migration-sequence.md`](docs/design-docs/directory-migration-sequence.md)、[`docs/design-docs/migration-mechanism-spec.md`](docs/design-docs/migration-mechanism-spec.md)
 
 拿不准时，遵循三条：入口文档保持精简，流程性内容进 skills，深细节进专项参考文档。

@@ -4,7 +4,7 @@ This is the repository entry document for coding agents. It is intentionally sho
 
 - keep durable project facts and hard constraints here
 - move multi-step procedures into skills
-- move deep reference material into `docs/guide/agent-reference.md`
+- move deep reference material into the indexed `docs/` knowledge base
 
 ## What ScholarAIO Is
 
@@ -28,10 +28,11 @@ The Python package is `scholaraio`. Real work should usually happen through the 
 Read these in roughly this order:
 
 1. [`README.md`](README.md) for the product overview and top-level structure.
-2. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md) for repo-open vs plugin or cross-project setup.
-3. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md) for the current user-facing CLI surface.
-4. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md) for deeper agent, runtime, and skill organization details.
-5. [`docs/development/scholaraio-upgrade-plan.md`](docs/development/scholaraio-upgrade-plan.md) before changing runtime layout, migration, or compatibility behavior.
+2. [`docs/DESIGN.md`](docs/DESIGN.md) for the repository knowledge map.
+3. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md) for repo-open vs plugin or cross-project setup.
+4. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md) for the current user-facing CLI surface.
+5. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md) for deeper agent, runtime, and skill organization details.
+6. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) and [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md) before changing runtime layout, migration, or compatibility behavior.
 
 ## Skill-First Workflow
 
@@ -126,10 +127,13 @@ project MCP JSON. Codex uses its own MCP registry; see
 
 Use the smallest doc that answers the question:
 
+- Repository knowledge map: [`docs/DESIGN.md`](docs/DESIGN.md)
+- Plan map and execution history: [`docs/internal/PLANS.md`](docs/internal/PLANS.md), [`docs/internal/exec-plans/`](docs/internal/exec-plans/index.md)
+- Knowledge quality and cleanup: [`docs/internal/QUALITY_SCORE.md`](docs/internal/QUALITY_SCORE.md)
 - Agent and skill organization: [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)
 - Setup and installation: [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md), [`docs/getting-started/installation.md`](docs/getting-started/installation.md), [`docs/getting-started/configuration.md`](docs/getting-started/configuration.md)
 - CLI behavior: [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)
 - Writing workflows: [`docs/guide/writing.md`](docs/guide/writing.md)
-- Runtime layout and migration: [`docs/development/scholaraio-upgrade-plan.md`](docs/development/scholaraio-upgrade-plan.md), [`docs/development/directory-structure-spec.md`](docs/development/directory-structure-spec.md), [`docs/development/directory-migration-sequence.md`](docs/development/directory-migration-sequence.md), [`docs/development/migration-mechanism-spec.md`](docs/development/migration-mechanism-spec.md)
+- Runtime layout and migration: [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md), [`docs/design-docs/directory-structure-spec.md`](docs/design-docs/directory-structure-spec.md), [`docs/design-docs/directory-migration-sequence.md`](docs/design-docs/directory-migration-sequence.md), [`docs/design-docs/migration-mechanism-spec.md`](docs/design-docs/migration-mechanism-spec.md)
 
 When in doubt, keep this file short, keep skills procedural, and keep deep detail in dedicated reference docs.

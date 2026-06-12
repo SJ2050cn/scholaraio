@@ -8,13 +8,13 @@ Last Updated: 2026-04-24
 
 当前重构升级只以以下文档为准：
 
-- `docs/development/directory-structure-spec.md`
-- `docs/development/directory-migration-sequence.md`
-- `docs/development/migration-mechanism-spec.md`
-- `docs/development/user-data-migration-strategy.md`
-- `docs/development/config-surface-audit.md`
-- `docs/development/upgrade-validation-matrix.md`
-- `docs/development/breaking-compat-cleanup-plan.md`
+- `docs/design-docs/directory-structure-spec.md`
+- `docs/design-docs/directory-migration-sequence.md`
+- `docs/design-docs/migration-mechanism-spec.md`
+- `docs/design-docs/user-data-migration-strategy.md`
+- `docs/internal/references/config-surface-audit.md`
+- `docs/internal/validation/upgrade-validation-matrix.md`
+- `docs/internal/exec-plans/completed/breaking-compat-cleanup-plan.md`
 
 当前执行状态：
 
@@ -31,9 +31,9 @@ Last Updated: 2026-04-24
 4. `workspace/` 是项目边界，不是 `papers` 的附属视图。
 5. `papers` 是最后迁移的大库；根级 agent surfaces 与 canonical skill root 在迁移期间保持不动。
 
-当前发布级验证与迁移演练以 `docs/development/upgrade-validation-matrix.md` 为准。
+当前发布级验证与迁移演练以 `docs/internal/validation/upgrade-validation-matrix.md` 为准。
 
 当前 breaking cleanup generation 以
-`docs/development/breaking-compat-cleanup-plan.md` 为准。
+`docs/internal/exec-plans/completed/breaking-compat-cleanup-plan.md` 为准。
 
 任何与上述 7 份权威文档冲突的旧结论，均视为废止。

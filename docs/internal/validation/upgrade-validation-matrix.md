@@ -8,11 +8,11 @@ Scope: release-grade functional validation, migration rehearsal, migration-state
 
 Execution record:
 
-- `docs/development/upgrade-validation-report-20260423.md`
+- `docs/internal/validation/reports/upgrade-validation-report-20260423.md`
   - current end-to-end rehearsal record for the 2026-04-23 validation run
-- `docs/development/upgrade-validation-report-20260424.md`
+- `docs/internal/validation/reports/upgrade-validation-report-20260424.md`
   - real-data migration, real-root CLI validation, and breaking-cleanup finalization record
-- `docs/development/upgrade-validation-report-20260425-main-v1.3.1.md`
+- `docs/internal/validation/reports/upgrade-validation-report-20260425-main-v1.3.1.md`
   - main/v1.3.1 command-surface comparison, recent PR cross-check, 67-command real CLI canary record, and legacy one-command migration rehearsal
 
 2026-04-24 implementation note:
@@ -39,19 +39,19 @@ This is not another directory-vision document. It is the release gate for the cu
 
 Use the development documents in this order:
 
-- `docs/development/scholaraio-upgrade-plan.md`
+- `docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`
   - entry point and authority map
-- `docs/development/directory-structure-spec.md`
+- `docs/design-docs/directory-structure-spec.md`
   - target runtime and repository layout
-- `docs/development/directory-migration-sequence.md`
+- `docs/design-docs/directory-migration-sequence.md`
   - move order and implementation sequencing
-- `docs/development/migration-mechanism-spec.md`
+- `docs/design-docs/migration-mechanism-spec.md`
   - control-plane contract, journals, locking, verify, cleanup
-- `docs/development/user-data-migration-strategy.md`
+- `docs/design-docs/user-data-migration-strategy.md`
   - compatibility and user-data preservation policy
-- `docs/development/config-surface-audit.md`
+- `docs/internal/references/config-surface-audit.md`
   - path-authority history and remaining config-risk context
-- `docs/development/upgrade-validation-matrix.md`
+- `docs/internal/validation/upgrade-validation-matrix.md`
   - the release-grade validation and migration rehearsal gate
 
 The first six documents define what ScholarAIO should be. This document defines what must be demonstrated before we say it is working.

@@ -231,7 +231,7 @@ Rationale:
 
 The detailed contract for this directory is defined in:
 
-- `docs/development/migration-mechanism-spec.md`
+- `docs/design-docs/migration-mechanism-spec.md`
 
 ## 6. `data/` Subtree Specification
 

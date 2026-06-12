@@ -9,7 +9,7 @@ Scope: implementation-facing migration control-plane specification for future ru
 2026-04-24 breaking cleanup note:
 
 - this document remains the compatibility-window control-plane specification
-- the active breaking-generation cleanup authority is `docs/development/breaking-compat-cleanup-plan.md`
+- the active breaking-generation cleanup authority is kept in internal release-gate records
 - real migrated user roots should now complete post-migration cleanup through `scholaraio migrate finalize --confirm`
 
 2026-04-23 implementation note:
@@ -47,14 +47,14 @@ This document exists so that future implementation work does not jump directly f
 
 This document is a companion to the existing migration documents:
 
-- `docs/development/directory-structure-spec.md`
+- `docs/design-docs/directory-structure-spec.md`
   - defines the target repository and runtime layout
-- `docs/development/directory-migration-sequence.md`
+- `docs/design-docs/directory-migration-sequence.md`
   - defines execution order for path abstraction and physical moves
-- `docs/development/user-data-migration-strategy.md`
+- `docs/design-docs/user-data-migration-strategy.md`
   - defines the user-data preservation and product strategy
-- `docs/development/upgrade-validation-matrix.md`
-  - defines the release gates, migration rehearsal matrix, and evidence requirements that must wrap the control plane
+- internal validation records define the release gates, migration rehearsal
+  matrix, and evidence requirements that must wrap the control plane
 
 This document fills the missing middle layer:
 

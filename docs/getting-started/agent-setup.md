@@ -58,6 +58,7 @@ The entry docs are intentionally layered:
 
 - `AGENTS.md` / `CLAUDE.md` / `.qwen/QWEN.md`: short entry docs with durable project facts and hard constraints
 - `.claude/skills/`: reusable workflows and procedures
+- `docs/DESIGN.md`: repository knowledge map and documentation system of record
 - `docs/guide/agent-reference.md`: deeper agent, runtime, and architecture reference
 
 If an instruction starts turning into a long checklist, it probably belongs in a skill instead of an entry doc.
