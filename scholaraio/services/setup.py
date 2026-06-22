@@ -440,7 +440,7 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
         CheckResult(
             label=t("python_ver", lang),
             ok=vi >= (3, 10),
-            detail=ver_str + (" ✓" if vi >= (3, 10) else " (need ≥3.10)"),
+            detail=ver_str if vi >= (3, 10) else ver_str + " (need >=3.10)",
         )
     )
 
@@ -464,7 +464,7 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
                 CheckResult(
                     t(label_key, lang),
                     False,
-                    f"{t('not_installed', lang)}: {', '.join(status.missing)}  → {hint}",
+                    f"{t('not_installed', lang)}: {', '.join(status.missing)}  | {hint}",
                 )
             )
 
@@ -767,12 +767,12 @@ def _detect_mineru(cfg: Config, lang: Lang) -> MinerUStatus:
         if lang == "zh":
             detail = (
                 "已配置 MinerU token，但未安装 mineru-open-api"
-                f" → pip install mineru-open-api | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+                f" | pip install mineru-open-api | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
             )
         else:
             detail = (
                 "MinerU token configured, but mineru-open-api is not installed"
-                f" → pip install mineru-open-api | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+                f" | pip install mineru-open-api | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
             )
         return MinerUStatus(
             ok=False,
@@ -786,12 +786,12 @@ def _detect_mineru(cfg: Config, lang: Lang) -> MinerUStatus:
     if lang == "zh":
         detail = (
             "未配置 MinerU token / CLI，且本地 MinerU 服务不可达"
-            f" → 安装 CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+            f" | 安装 CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
         )
     else:
         detail = (
             "MinerU token / CLI not configured and local MinerU service is unreachable"
-            f" → install CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+            f" | install CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
         )
     return MinerUStatus(
         ok=False,
@@ -809,8 +809,8 @@ def _check_docling(lang: Lang) -> tuple[bool, str]:
     if cmd:
         return True, cmd
     if lang == "zh":
-        return False, f"未安装 → pip install docling | 安装文档: {DOCLING_INSTALL_URL} | CLI: {DOCLING_CLI_URL}"
-    return False, f"not installed → pip install docling | install docs: {DOCLING_INSTALL_URL} | CLI: {DOCLING_CLI_URL}"
+        return False, f"未安装 | pip install docling | 安装文档: {DOCLING_INSTALL_URL} | CLI: {DOCLING_CLI_URL}"
+    return False, f"not installed | pip install docling | install docs: {DOCLING_INSTALL_URL} | CLI: {DOCLING_CLI_URL}"
 
 
 def _check_graphviz_dot(lang: Lang) -> tuple[bool, str]:
@@ -821,12 +821,12 @@ def _check_graphviz_dot(lang: Lang) -> tuple[bool, str]:
     if lang == "zh":
         return (
             False,
-            "未安装 → sudo apt-get install graphviz | macOS: brew install graphviz | "
+            "未安装 | sudo apt-get install graphviz | macOS: brew install graphviz | "
             "conda: conda install -c conda-forge graphviz | 验证: dot -V",
         )
     return (
         False,
-        "not installed → sudo apt-get install graphviz | macOS: brew install graphviz | "
+        "not installed | sudo apt-get install graphviz | macOS: brew install graphviz | "
         "conda: conda install -c conda-forge graphviz | verify: dot -V",
     )
 
@@ -839,12 +839,12 @@ def _check_inkscape(lang: Lang) -> tuple[bool, str]:
     if lang == "zh":
         return (
             False,
-            "未安装 → sudo apt-get install inkscape | macOS: brew install --cask inkscape | "
+            "未安装 | sudo apt-get install inkscape | macOS: brew install --cask inkscape | "
             "Beamer \\includesvg 需要 Inkscape 与 -shell-escape",
         )
     return (
         False,
-        "not installed → sudo apt-get install inkscape | macOS: brew install --cask inkscape | "
+        "not installed | sudo apt-get install inkscape | macOS: brew install --cask inkscape | "
         "Beamer \\includesvg requires Inkscape and -shell-escape",
     )
 
@@ -866,8 +866,8 @@ def _check_huggingface(lang: Lang) -> tuple[bool, str]:
     if ok:
         return True, t("reachability_yes", lang)
     if lang == "zh":
-        return False, "不可达 → Docling 或 Hugging Face 模型下载可能失败；可优先考虑 MinerU / ModelScope"
-    return False, "unreachable → Docling or Hugging Face model downloads may fail; prefer MinerU / ModelScope"
+        return False, "不可达 | Docling 或 Hugging Face 模型下载可能失败；可优先考虑 MinerU / ModelScope"
+    return False, "unreachable | Docling or Hugging Face model downloads may fail; prefer MinerU / ModelScope"
 
 
 def _wizard_mineru_available(cfg: Config) -> tuple[bool, bool]:
