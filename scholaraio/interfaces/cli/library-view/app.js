@@ -8,12 +8,27 @@ const state = {
   selected: { main: "", proceedings: "" },
   sortKey: "year",
   sortDir: "desc",
+  searchMode: "metadata",
+  ranked: null,
+  searchRequestSeq: 0,
+  searchBusy: false,
+  capabilities: {
+    csrfToken: "",
+    nativePdfOpen: false,
+    nativePdfReason: "Checking local capabilities…",
+  },
   pdf: null,
   pdfFullscreen: false,
   detailRequestSeq: 0,
   refreshRequestSeq: { main: 0, proceedings: 0 },
   filters: {
     search: "",
+    title: "",
+    author: "",
+    yearFrom: "",
+    yearTo: "",
+    journal: "",
+    doi: "",
     type: "",
     volume: "",
     issues: false,
@@ -45,6 +60,17 @@ const els = {
   tableBody: document.getElementById("paper-table-body"),
   emptyState: document.getElementById("empty-state"),
   searchInput: document.getElementById("search-input"),
+  searchMode: document.getElementById("search-mode"),
+  searchButton: document.getElementById("search-button"),
+  searchDiagnostics: document.getElementById("search-diagnostics"),
+  clearFiltersButton: document.getElementById("clear-filters-button"),
+  activeFilterCount: document.getElementById("active-filter-count"),
+  titleFilter: document.getElementById("title-filter"),
+  authorFilter: document.getElementById("author-filter"),
+  yearFromFilter: document.getElementById("year-from-filter"),
+  yearToFilter: document.getElementById("year-to-filter"),
+  journalFilter: document.getElementById("journal-filter"),
+  doiFilter: document.getElementById("doi-filter"),
   typeFilter: document.getElementById("type-filter"),
   volumeFilter: document.getElementById("volume-filter"),
   volumeFilterLabel: document.getElementById("volume-filter-label"),
@@ -52,11 +78,16 @@ const els = {
   filterMissingMd: document.getElementById("filter-missing-md"),
   refreshButton: document.getElementById("refresh-button"),
   detailTitle: document.getElementById("detail-title"),
+  detailActions: document.getElementById("detail-actions"),
+  copyBibtexButton: document.getElementById("copy-bibtex-button"),
+  previewPdfButton: document.getElementById("preview-pdf-button"),
+  nativePdfButton: document.getElementById("native-pdf-button"),
   metadataGrid: document.getElementById("metadata-grid"),
   issueList: document.getElementById("issue-list"),
   detailAbstract: document.getElementById("detail-abstract"),
   detailConclusion: document.getElementById("detail-conclusion"),
   tocList: document.getElementById("toc-list"),
+  toast: document.getElementById("toast"),
 };
 
 function text(value, fallback = "--") {
@@ -412,10 +443,37 @@ function setConnection(kind, label) {
   els.connectionLabel.textContent = label;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, { cache: "no-store", ...options });
+  if (!response.ok) {
+    let message = `${response.status || ""} ${response.statusText || "Request failed"}`.trim();
+    try {
+      const payload = await response.json();
+      if (payload?.error) message = payload.error;
+    } catch (_err) {
+      // Keep the HTTP fallback when an error body is not JSON.
+    }
+    throw new Error(message);
+  }
   return response.json();
+}
+
+async function loadCapabilities() {
+  try {
+    const payload = await fetchJson("/api/capabilities");
+    state.capabilities = {
+      csrfToken: String(payload?.csrf_token || ""),
+      nativePdfOpen: Boolean(payload?.native_pdf_open?.enabled),
+      nativePdfReason: String(payload?.native_pdf_open?.reason || ""),
+    };
+  } catch (_err) {
+    state.capabilities = {
+      csrfToken: "",
+      nativePdfOpen: false,
+      nativePdfReason: "Native PDF launch capability could not be verified.",
+    };
+  }
+  if (state.detail) renderDetailActions(state.detail);
 }
 
 function activePayload() {
@@ -431,19 +489,36 @@ function issueTotal(row) {
   return Number(counts.error || 0) + Number(counts.warning || 0) + Number(counts.info || 0);
 }
 
+function includesFold(value, query) {
+  return String(value ?? "").toLocaleLowerCase().includes(String(query ?? "").toLocaleLowerCase());
+}
+
 function rowMatches(row) {
-  const q = state.filters.search.toLowerCase();
-  if (q) {
+  const q = state.filters.search.trim();
+  if (q && state.searchMode === "metadata") {
     const haystack = [
       row.title,
       row.authors_text,
+      row.journal,
       row.doi,
       row.paper_id,
       row.dir_name,
       row.proceeding_title,
-    ].join(" ").toLowerCase();
-    if (!haystack.includes(q)) return false;
+    ].join(" ");
+    if (!includesFold(haystack, q)) return false;
   }
+  if (state.filters.title && !includesFold(row.title, state.filters.title)) return false;
+  if (state.filters.author && !includesFold(row.authors_text, state.filters.author)) return false;
+  if (state.filters.journal) {
+    const source = [row.journal, row.proceeding_title].filter(Boolean).join(" ");
+    if (!includesFold(source, state.filters.journal)) return false;
+  }
+  if (state.filters.doi && !includesFold(row.doi, state.filters.doi)) return false;
+  const year = Number(row.year);
+  const yearFrom = Number(state.filters.yearFrom);
+  const yearTo = Number(state.filters.yearTo);
+  if (state.filters.yearFrom && (!Number.isFinite(year) || year < yearFrom)) return false;
+  if (state.filters.yearTo && (!Number.isFinite(year) || year > yearTo)) return false;
   if (state.filters.type && row.paper_type !== state.filters.type) return false;
   if (state.filters.volume && row.proceeding_title !== state.filters.volume) return false;
   if (state.filters.issues && issueTotal(row) === 0) return false;
@@ -452,6 +527,11 @@ function rowMatches(row) {
 }
 
 function compareRows(a, b) {
+  if (state.sortKey === "relevance") {
+    const aRank = rankingFor(a.paper_id)?.rank ?? Number.MAX_SAFE_INTEGER;
+    const bRank = rankingFor(b.paper_id)?.rank ?? Number.MAX_SAFE_INTEGER;
+    return aRank - bRank;
+  }
   const av = a[state.sortKey] ?? "";
   const bv = b[state.sortKey] ?? "";
   const an = Number(av);
@@ -463,7 +543,64 @@ function compareRows(a, b) {
 }
 
 function filteredRows() {
-  return activeRows().filter(rowMatches).sort(compareRows);
+  let rows = activeRows().filter(rowMatches);
+  if (state.ranked) {
+    rows = rows.filter((row) => state.ranked.byId.has(row.paper_id));
+  }
+  return rows.sort(compareRows);
+}
+
+function rankingFor(paperId) {
+  return state.ranked?.byId?.get(paperId) || null;
+}
+
+function syncFiltersFromControls() {
+  state.filters.search = els.searchInput.value.trim();
+  state.filters.title = els.titleFilter.value.trim();
+  state.filters.author = els.authorFilter.value.trim();
+  state.filters.yearFrom = els.yearFromFilter.value.trim();
+  state.filters.yearTo = els.yearToFilter.value.trim();
+  state.filters.journal = els.journalFilter.value.trim();
+  state.filters.doi = els.doiFilter.value.trim();
+  state.filters.type = els.typeFilter.value;
+  state.filters.volume = els.volumeFilter.value;
+  state.filters.issues = els.filterIssues.checked;
+  state.filters.missingMd = els.filterMissingMd.checked;
+}
+
+function activeFilterTotal() {
+  return [
+    state.filters.search,
+    state.filters.title,
+    state.filters.author,
+    state.filters.yearFrom,
+    state.filters.yearTo,
+    state.filters.journal,
+    state.filters.doi,
+    state.filters.type,
+    state.filters.volume,
+    state.filters.issues,
+    state.filters.missingMd,
+  ].filter(Boolean).length;
+}
+
+function renderActiveFilterCount() {
+  const total = activeFilterTotal();
+  els.activeFilterCount.textContent = total ? `${total} active filter${total === 1 ? "" : "s"}` : "No active filters";
+}
+
+function validateYearRange() {
+  const fields = [
+    ["Year from", state.filters.yearFrom],
+    ["Year to", state.filters.yearTo],
+  ];
+  for (const [label, value] of fields) {
+    if (value && (!/^\d{4}$/.test(value) || Number(value) < 1000)) return `${label} must be a four-digit year.`;
+  }
+  if (state.filters.yearFrom && state.filters.yearTo && Number(state.filters.yearFrom) > Number(state.filters.yearTo)) {
+    return "Year to must not be before year from.";
+  }
+  return "";
 }
 
 function buildOptions(select, values, emptyLabel) {
@@ -483,6 +620,34 @@ function buildOptions(select, values, emptyLabel) {
   return select.value;
 }
 
+function setSearchDiagnostics(kind, message, actions = []) {
+  const commands = (actions || []).map((action) => action.command).filter(Boolean);
+  els.searchDiagnostics.dataset.kind = kind;
+  els.searchDiagnostics.textContent = [message, ...commands].filter(Boolean).join(" • ");
+}
+
+function updateSearchModeUi() {
+  const proceedings = state.tab === "proceedings";
+  if (proceedings && state.searchMode !== "metadata") {
+    state.searchMode = "metadata";
+    state.ranked = null;
+  }
+  els.searchMode.value = state.searchMode;
+  els.searchMode.disabled = proceedings;
+  els.searchMode.title = proceedings ? "Ranked search is not available for proceedings yet." : "";
+  els.searchButton.disabled = state.searchBusy || state.searchMode === "metadata" || proceedings;
+  els.searchButton.hidden = state.searchMode === "metadata";
+  els.searchButton.setAttribute?.("aria-busy", state.searchBusy ? "true" : "false");
+  els.searchButton.textContent = state.searchBusy ? "Searching…" : "Search";
+  els.searchInput.placeholder =
+    state.searchMode === "metadata" ? "Filter loaded metadata" : `Enter a ${state.searchMode} search query`;
+  if (proceedings) {
+    setSearchDiagnostics("info", "Proceedings currently supports Metadata search and structured filters.");
+  } else if (state.searchMode === "metadata") {
+    setSearchDiagnostics("info", "Metadata mode filters the loaded records instantly.");
+  }
+}
+
 function renderFilters() {
   const rows = activeRows();
   const types = [...new Set(rows.map((row) => row.paper_type).filter(Boolean))].sort();
@@ -492,6 +657,8 @@ function renderFilters() {
   const isProceedings = state.tab === "proceedings";
   els.volumeFilter.hidden = !isProceedings;
   els.volumeFilterLabel.hidden = !isProceedings;
+  updateSearchModeUi();
+  renderActiveFilterCount();
 }
 
 function renderMetrics() {
@@ -507,6 +674,154 @@ function renderMetrics() {
   els.metricErrors.textContent = String(totals.error ?? 0);
   els.metricWarnings.textContent = String(totals.warning ?? 0);
   els.updatedAt.textContent = formatDate(payload?.generated_at);
+}
+
+function rankedSearchUrl() {
+  const params = new URLSearchParams({
+    mode: state.searchMode,
+    q: state.filters.search,
+  });
+  const fields = [
+    ["title", state.filters.title],
+    ["author", state.filters.author],
+    ["year_from", state.filters.yearFrom],
+    ["year_to", state.filters.yearTo],
+    ["journal", state.filters.journal],
+    ["paper_type", state.filters.type],
+    ["doi", state.filters.doi],
+  ];
+  for (const [name, value] of fields) {
+    if (value) params.set(name, value);
+  }
+  params.set("limit", "200");
+  return `/api/main/search?${params.toString()}`;
+}
+
+function setSearchButtonBusy(busy) {
+  state.searchBusy = Boolean(busy);
+  els.searchButton.disabled = Boolean(busy) || state.searchMode === "metadata" || state.tab === "proceedings";
+  els.searchButton.setAttribute?.("aria-busy", busy ? "true" : "false");
+  els.searchButton.textContent = busy ? "Searching…" : "Search";
+}
+
+async function runRankedSearch() {
+  syncFiltersFromControls();
+  renderActiveFilterCount();
+  if (state.tab !== "main") {
+    state.searchMode = "metadata";
+    state.ranked = null;
+    updateSearchModeUi();
+    renderTable();
+    return;
+  }
+  if (state.searchMode === "metadata") {
+    state.ranked = null;
+    setSearchDiagnostics("info", "Metadata mode filters the loaded records instantly.");
+    renderTable();
+    return;
+  }
+  if (!state.filters.search) {
+    setSearchDiagnostics("error", "Enter a query before running ranked search.");
+    els.searchInput.focus();
+    return;
+  }
+  const yearError = validateYearRange();
+  if (yearError) {
+    setSearchDiagnostics("error", yearError);
+    return;
+  }
+
+  const requestTab = state.tab;
+  const requestMode = state.searchMode;
+  const requestSeq = ++state.searchRequestSeq;
+  setSearchButtonBusy(true);
+  setSearchDiagnostics("loading", `Running ${requestMode} search…`);
+  try {
+    const payload = await fetchJson(rankedSearchUrl());
+    if (state.tab !== requestTab || state.searchMode !== requestMode || state.searchRequestSeq !== requestSeq) return;
+    const results = Array.isArray(payload.results) ? payload.results : [];
+    const diagnostics = payload.diagnostics || {};
+    if (diagnostics.status === "unavailable" && results.length === 0) {
+      state.ranked = null;
+    } else {
+      state.ranked = {
+        order: results.map((result) => result.paper_id),
+        byId: new Map(
+          results.map((result, index) => [
+            result.paper_id,
+            {
+              rank: Number(result.rank || index + 1),
+              score: Number(result.score || 0),
+              match: String(result.match || requestMode),
+            },
+          ]),
+        ),
+        diagnostics,
+      };
+      state.sortKey = "relevance";
+      state.sortDir = "asc";
+    }
+    const message = diagnostics.message || `${results.length} ranked result${results.length === 1 ? "" : "s"}.`;
+    setSearchDiagnostics(diagnostics.status || "ok", message, diagnostics.actions || []);
+    renderTable();
+  } catch (err) {
+    if (state.tab !== requestTab || state.searchMode !== requestMode || state.searchRequestSeq !== requestSeq) return;
+    setSearchDiagnostics("error", `Search failed: ${String(err)}`);
+  } finally {
+    if (state.tab === requestTab && state.searchMode === requestMode && state.searchRequestSeq === requestSeq) {
+      setSearchButtonBusy(false);
+    }
+  }
+}
+
+function markRankedSearchDirty() {
+  if (state.searchMode === "metadata") {
+    state.ranked = null;
+    renderTable();
+  } else {
+    setSearchDiagnostics("info", "Filters changed. Run Search to refresh ranked results.");
+  }
+  renderActiveFilterCount();
+}
+
+function clearAllFilters() {
+  state.searchRequestSeq += 1;
+  state.searchMode = "metadata";
+  state.ranked = null;
+  state.searchBusy = false;
+  state.sortKey = "year";
+  state.sortDir = "desc";
+  Object.assign(state.filters, {
+    search: "",
+    title: "",
+    author: "",
+    yearFrom: "",
+    yearTo: "",
+    journal: "",
+    doi: "",
+    type: "",
+    volume: "",
+    issues: false,
+    missingMd: false,
+  });
+  for (const input of [
+    els.searchInput,
+    els.titleFilter,
+    els.authorFilter,
+    els.yearFromFilter,
+    els.yearToFilter,
+    els.journalFilter,
+    els.doiFilter,
+    els.typeFilter,
+    els.volumeFilter,
+  ]) {
+    input.value = "";
+  }
+  els.filterIssues.checked = false;
+  els.filterMissingMd.checked = false;
+  updateSearchModeUi();
+  renderActiveFilterCount();
+  renderTable();
 }
 
 function statusPills(row) {
@@ -529,7 +844,7 @@ function renderTable() {
   const rows = filteredRows();
   els.tableBody.textContent = "";
   els.emptyState.hidden = rows.length > 0;
-  els.tableCount.textContent = `${rows.length} shown`;
+  els.tableCount.textContent = state.ranked ? `${rows.length} ranked result${rows.length === 1 ? "" : "s"}` : `${rows.length} shown`;
   for (const row of rows) {
     const tr = document.createElement("tr");
     tr.className = state.selected[state.tab] === row.paper_id ? "is-selected" : "";
@@ -542,6 +857,14 @@ function renderTable() {
     title.className = "paper-title";
     title.textContent = text(row.title);
     titleWrap.appendChild(title);
+    const ranking = rankingFor(row.paper_id);
+    if (ranking) {
+      const relevance = document.createElement("div");
+      relevance.className = "relevance-line";
+      const score = Number.isFinite(ranking.score) ? ranking.score.toFixed(4) : "--";
+      relevance.textContent = `#${ranking.rank} · ${ranking.match} · ${score}`;
+      titleWrap.appendChild(relevance);
+    }
     titleCell.appendChild(titleWrap);
     tr.appendChild(titleCell);
 
@@ -643,32 +966,141 @@ function renderToc(detail) {
   }
 }
 
+function renderDetailActions(detail) {
+  const hasRecord = Boolean(detail?.paper_id);
+  const hasPdf = Boolean(detail?.has_pdf && detail?.pdf_url);
+  els.detailActions.hidden = !hasRecord;
+  els.copyBibtexButton.disabled = !hasRecord;
+  els.previewPdfButton.disabled = !hasPdf;
+  els.previewPdfButton.title = hasPdf ? "Preview this PDF inside ScholarAIO" : "No local PDF is available";
+  const nativeEnabled = hasPdf && state.capabilities.nativePdfOpen;
+  els.nativePdfButton.disabled = !nativeEnabled;
+  if (!hasPdf) els.nativePdfButton.title = "No local PDF is available";
+  else if (!state.capabilities.nativePdfOpen) {
+    els.nativePdfButton.title = state.capabilities.nativePdfReason || "Native PDF launch is unavailable";
+  } else els.nativePdfButton.title = "Open this PDF with the operating system's default viewer";
+}
+
 function renderDetail(detail) {
   if (!detail) {
+    state.detail = null;
     els.detailTitle.textContent = "Select a record";
     els.metadataGrid.textContent = "";
     els.issueList.textContent = "";
     els.detailAbstract.textContent = "--";
     els.detailConclusion.textContent = "--";
     els.tocList.textContent = "";
+    renderDetailActions(null);
     return;
   }
+  state.detail = detail;
   els.detailTitle.textContent = text(detail.title);
   renderMetadata(detail);
   renderIssues(detail);
   renderMarkdown(els.detailAbstract, detail.abstract);
   renderMarkdown(els.detailConclusion, detail.l3_conclusion);
   renderToc(detail);
+  renderDetailActions(detail);
+}
+
+async function copyText(value) {
+  const content = String(value ?? "");
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(content);
+    return;
+  } catch (_clipboardError) {
+    const textarea = document.createElement("textarea");
+    const previousFocus = document.activeElement;
+    textarea.value = content;
+    textarea.className = "clipboard-fallback";
+    textarea.setAttribute("readonly", "");
+    document.body.appendChild(textarea);
+    try {
+      textarea.focus();
+      textarea.select();
+      if (!document.execCommand("copy")) throw new Error("Clipboard fallback was rejected");
+    } finally {
+      textarea.remove();
+      if (previousFocus?.focus) previousFocus.focus();
+    }
+  }
+}
+
+let toastTimer = null;
+function showToast(message, kind = "success") {
+  clearTimeout(toastTimer);
+  els.toast.textContent = message;
+  els.toast.dataset.kind = kind;
+  els.toast.hidden = false;
+  toastTimer = setTimeout(() => {
+    els.toast.hidden = true;
+  }, 3600);
+  if (toastTimer?.unref) toastTimer.unref();
+}
+
+function setActionBusy(button, busy, busyLabel) {
+  if (!button.dataset.idleLabel) button.dataset.idleLabel = button.textContent;
+  button.disabled = Boolean(busy);
+  button.setAttribute?.("aria-busy", busy ? "true" : "false");
+  button.textContent = busy ? busyLabel : button.dataset.idleLabel;
 }
 
 async function copySourceRoot() {
   const root = activePayload()?.root || "";
   if (!root) return;
   try {
-    await navigator.clipboard.writeText(root);
+    await copyText(root);
     els.sourceCopyButton.textContent = "Copied";
   } catch (_err) {
     els.sourceCopyButton.textContent = "Copy failed";
+  }
+}
+
+async function copySelectedBibtex() {
+  const detail = state.detail;
+  if (!detail?.paper_id || els.copyBibtexButton.disabled) return;
+  const source = state.tab === "main" ? "main" : "proceedings";
+  setActionBusy(els.copyBibtexButton, true, "Copying…");
+  try {
+    const payload = await fetchJson(`/api/${source}/bibtex?id=${encodeURIComponent(detail.paper_id)}`);
+    await copyText(payload.bibtex || "");
+    showToast("BibTeX copied to clipboard.");
+  } catch (err) {
+    showToast(`Could not copy BibTeX: ${String(err)}`, "error");
+  } finally {
+    setActionBusy(els.copyBibtexButton, false, "Copying…");
+    renderDetailActions(state.detail);
+  }
+}
+
+function previewSelectedPdf() {
+  if (!state.detail?.has_pdf || !state.detail?.pdf_url) return;
+  openPdf(state.detail);
+}
+
+async function openSelectedPdfNative() {
+  const detail = state.detail;
+  if (!detail?.paper_id || !detail.has_pdf || !state.capabilities.nativePdfOpen || els.nativePdfButton.disabled) {
+    return;
+  }
+  const source = state.tab === "main" ? "main" : "proceedings";
+  setActionBusy(els.nativePdfButton, true, "Opening…");
+  try {
+    await fetchJson(`/api/${source}/open-pdf`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-ScholarAIO-CSRF": state.capabilities.csrfToken,
+      },
+      body: JSON.stringify({ id: detail.paper_id }),
+    });
+    showToast("PDF opened in the default viewer.");
+  } catch (err) {
+    showToast(`Could not open the default viewer: ${String(err)}`, "error");
+  } finally {
+    setActionBusy(els.nativePdfButton, false, "Opening…");
+    renderDetailActions(state.detail);
   }
 }
 
@@ -772,6 +1204,12 @@ function schedulePoll() {
 function switchTab(tab) {
   if (state.tab === tab) return;
   state.tab = tab;
+  state.searchRequestSeq += 1;
+  state.searchMode = "metadata";
+  state.ranked = null;
+  state.searchBusy = false;
+  state.sortKey = "year";
+  state.sortDir = "desc";
   document.querySelectorAll(".tab").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === tab);
   });
@@ -779,9 +1217,11 @@ function switchTab(tab) {
   state.filters.volume = "";
   els.typeFilter.value = "";
   els.volumeFilter.value = "";
+  els.searchMode.value = "metadata";
   showRecords();
   state.detailRequestSeq += 1;
   renderDetail(null);
+  updateSearchModeUi();
   refreshActive({ keepSelection: true });
 }
 
@@ -789,27 +1229,63 @@ function bindEvents() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
   });
-  els.searchInput.addEventListener("input", () => {
-    state.filters.search = els.searchInput.value.trim();
+  for (const input of [
+    els.searchInput,
+    els.titleFilter,
+    els.authorFilter,
+    els.yearFromFilter,
+    els.yearToFilter,
+    els.journalFilter,
+    els.doiFilter,
+  ]) {
+    input.addEventListener("input", () => {
+      syncFiltersFromControls();
+      const yearError = validateYearRange();
+      if (yearError) setSearchDiagnostics("error", yearError);
+      else markRankedSearchDirty();
+    });
+  }
+  els.searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && state.searchMode !== "metadata") {
+      event.preventDefault();
+      runRankedSearch();
+    }
+  });
+  els.searchMode.addEventListener("change", () => {
+    state.searchRequestSeq += 1;
+    state.searchMode = els.searchMode.value;
+    state.ranked = null;
+    state.searchBusy = false;
+    state.sortKey = "year";
+    state.sortDir = "desc";
+    updateSearchModeUi();
+    if (state.searchMode !== "metadata") {
+      setSearchDiagnostics("info", `Enter a query, then run ${state.searchMode} search.`);
+    }
     renderTable();
   });
+  els.searchButton.addEventListener("click", runRankedSearch);
+  els.clearFiltersButton.addEventListener("click", clearAllFilters);
   els.typeFilter.addEventListener("change", () => {
-    state.filters.type = els.typeFilter.value;
-    renderTable();
+    syncFiltersFromControls();
+    markRankedSearchDirty();
   });
   els.volumeFilter.addEventListener("change", () => {
-    state.filters.volume = els.volumeFilter.value;
-    renderTable();
+    syncFiltersFromControls();
+    markRankedSearchDirty();
   });
   els.filterIssues.addEventListener("change", () => {
-    state.filters.issues = els.filterIssues.checked;
-    renderTable();
+    syncFiltersFromControls();
+    markRankedSearchDirty();
   });
   els.filterMissingMd.addEventListener("change", () => {
-    state.filters.missingMd = els.filterMissingMd.checked;
-    renderTable();
+    syncFiltersFromControls();
+    markRankedSearchDirty();
   });
   els.sourceCopyButton.addEventListener("click", copySourceRoot);
+  els.copyBibtexButton.addEventListener("click", copySelectedBibtex);
+  els.previewPdfButton.addEventListener("click", previewSelectedPdf);
+  els.nativePdfButton.addEventListener("click", openSelectedPdfNative);
   els.refreshButton.addEventListener("click", () => refreshActive({ keepSelection: true }));
   els.pdfBackButton.addEventListener("click", showRecords);
   els.pdfFullscreenButton.addEventListener("click", () => setPdfFullscreen(!state.pdfFullscreen));
@@ -830,5 +1306,6 @@ function bindEvents() {
 }
 
 bindEvents();
+loadCapabilities();
 refreshActive({ keepSelection: false });
 schedulePoll();

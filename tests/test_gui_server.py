@@ -111,6 +111,136 @@ def _write_gui_action_fixtures(tmp_path: Path, *, main_pdf: bool = True):
     return cfg, main_dir, child_dir
 
 
+def _run_library_app_vm(test_body: str, *, fetch_setup: str = "") -> dict:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior regression")
+    app_js = (_static_dir() / "app.js").as_posix()
+    script = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+let document;
+function element(id) {
+  const classes = new Set();
+  const attributes = new Map();
+  const listeners = new Map();
+  const el = {
+    id,
+    dataset: {},
+    value: "",
+    checked: false,
+    disabled: false,
+    hidden: false,
+    title: "",
+    className: "",
+    children: [],
+    parentNode: null,
+    style: {},
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+      toggle(name, force) {
+        const enabled = force === undefined ? !classes.has(name) : Boolean(force);
+        if (enabled) classes.add(name);
+        else classes.delete(name);
+        return enabled;
+      },
+    },
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+    append(...items) { items.forEach((item) => this.appendChild(item)); },
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+      this.parentNode = null;
+    },
+    setAttribute(name, value) { attributes.set(name, String(value)); this[name] = String(value); },
+    getAttribute(name) { return attributes.get(name) || null; },
+    removeAttribute(name) { attributes.delete(name); delete this[name]; },
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    dispatch(name, event = {}) { return listeners.get(name)?.(event); },
+    focus() { document.activeElement = this; },
+    select() { document.__selectedText = this.value; },
+  };
+  let content = "";
+  Object.defineProperty(el, "textContent", {
+    get() { return content; },
+    set(value) { content = String(value ?? ""); if (content === "") el.children = []; },
+  });
+  return el;
+}
+
+const elements = new Map();
+const tabs = ["main", "proceedings"].map((tab) => {
+  const el = element(`tab-${tab}`);
+  el.dataset.tab = tab;
+  return el;
+});
+document = {
+  body: element("body"),
+  activeElement: null,
+  __selectedText: "",
+  __execCopy: true,
+  getElementById(id) {
+    if (!elements.has(id)) elements.set(id, element(id));
+    return elements.get(id);
+  },
+  createElement(tag) { return element(tag); },
+  querySelectorAll(selector) {
+    if (selector === ".tab") return tabs;
+    return [];
+  },
+  addEventListener() {},
+  execCommand(command) { return command === "copy" && this.__execCopy; },
+};
+const context = {
+  document,
+  elements,
+  navigator: { clipboard: { writeText: async () => {} } },
+  location: { origin: "http://127.0.0.1:8765" },
+  URLSearchParams,
+  setTimeout,
+  clearTimeout,
+  setInterval: () => 1,
+  clearInterval: () => {},
+  console,
+};
+context.window = context;
+context.fetch = async (url) => {
+  if (String(url).includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      search_modes: { main: ["metadata", "keyword", "semantic", "unified"], proceedings: ["metadata"] },
+    }) };
+  }
+  if (String(url).includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+__FETCH_SETUP__
+const code = fs.readFileSync(__APP_JS__, "utf8");
+vm.runInNewContext(`${code}
+globalThis.__ready = (async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+__TEST_BODY__
+})();`, context);
+context.__ready.then((payload) => console.log(JSON.stringify(payload))).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+"""
+    script = script.replace("__APP_JS__", json.dumps(app_js))
+    script = script.replace("__FETCH_SETUP__", fetch_setup)
+    script = script.replace("__TEST_BODY__", test_body)
+    result = subprocess.run([node, "-e", script], check=False, capture_output=True, text=True)
+    if result.returncode:
+        raise AssertionError(result.stderr or result.stdout)
+    return json.loads(result.stdout)
+
+
 def test_library_view_api_serves_live_json_and_rejects_writes(tmp_path):
     from scholaraio.interfaces.cli.gui import create_library_view_server
 
@@ -215,6 +345,456 @@ def test_library_view_shell_uses_compact_records_and_pdf_controls(tmp_path):
         server.server_close()
 
 
+def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path):
+    cfg = _build_config({}, tmp_path)
+
+    with (
+        _running_library_server(cfg) as (_server, base_url),
+        urlopen(f"{base_url}/", timeout=3) as response,
+    ):
+        html = response.read().decode("utf-8")
+
+    for control_id in (
+        "search-mode",
+        "search-input",
+        "search-button",
+        "title-filter",
+        "author-filter",
+        "year-from-filter",
+        "year-to-filter",
+        "journal-filter",
+        "doi-filter",
+        "type-filter",
+        "clear-filters-button",
+        "copy-bibtex-button",
+        "preview-pdf-button",
+        "native-pdf-button",
+    ):
+        assert f'id="{control_id}"' in html
+    assert 'id="search-diagnostics"' in html
+    assert 'aria-live="polite"' in html
+    assert 'id="toast"' in html
+    assert 'role="status"' in html
+    assert 'id="pdf-frame"' in html
+    assert "http://" not in html
+    assert "https://" not in html
+
+
+def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [{
+    paper_id: "target-paper",
+    dir_name: "Doe-2024-Target",
+    title: "Turbulence closure for reacting flows",
+    authors_text: "Jane Doe, Pat Roe",
+    year: 2024,
+    journal: "Journal of Fluid Mechanics",
+    doi: "10.1000/target",
+    paper_type: "journal-article",
+    has_md: false,
+    issue_counts: { warning: 1 },
+  }];
+  Object.assign(state.filters, {
+    search: "closure",
+    title: "reacting",
+    author: "JANE DOE",
+    yearFrom: "2020",
+    yearTo: "2024",
+    journal: "fluid mechanics",
+    doi: "10.1000/tar",
+    type: "journal-article",
+    volume: "",
+    issues: true,
+    missingMd: true,
+  });
+  const allMatch = rowMatches(state.rows.main[0]);
+  state.filters.yearFrom = "2025";
+  const yearMiss = rowMatches(state.rows.main[0]);
+  state.filters.yearFrom = "2020";
+  state.filters.author = "someone else";
+  const authorMiss = rowMatches(state.rows.main[0]);
+
+  state.tab = "proceedings";
+  const proceeding = {
+    paper_id: "proceeding-paper",
+    title: "Proceeding result",
+    authors_text: "Jane Doe",
+    year: 2024,
+    journal: "",
+    proceeding_title: "Proceedings of Fluid Actions",
+    doi: "10.1000/tar",
+    paper_type: "journal-article",
+    has_md: false,
+    issue_counts: { warning: 1 },
+  };
+  state.filters.author = "Jane Doe";
+  state.filters.title = "Proceeding";
+  state.filters.search = "result";
+  state.filters.journal = "fluid actions";
+  state.filters.volume = "Proceedings of Fluid Actions";
+  const proceedingSourceMatch = rowMatches(proceeding);
+
+  state.searchMode = "unified";
+  state.ranked = { order: ["proceeding-paper"], byId: new Map(), diagnostics: {} };
+  state.sortKey = "title";
+  state.sortDir = "asc";
+  for (const [id, value] of [
+    ["search-input", "result"],
+    ["title-filter", "Proceeding"],
+    ["author-filter", "Jane Doe"],
+    ["year-from-filter", "2020"],
+    ["year-to-filter", "2024"],
+    ["journal-filter", "fluid"],
+    ["doi-filter", "10.1000"],
+    ["type-filter", "journal-article"],
+  ]) elements.get(id).value = value;
+  elements.get("filter-issues").checked = true;
+  elements.get("filter-missing-md").checked = true;
+  clearAllFilters();
+
+  return {
+    allMatch,
+    yearMiss,
+    authorMiss,
+    proceedingSourceMatch,
+    filters: state.filters,
+    searchMode: state.searchMode,
+    ranked: state.ranked,
+    sortKey: state.sortKey,
+    sortDir: state.sortDir,
+    controlValues: [
+      elements.get("search-input").value,
+      elements.get("title-filter").value,
+      elements.get("author-filter").value,
+      elements.get("year-from-filter").value,
+      elements.get("year-to-filter").value,
+      elements.get("journal-filter").value,
+      elements.get("doi-filter").value,
+      elements.get("type-filter").value,
+    ],
+    checks: [elements.get("filter-issues").checked, elements.get("filter-missing-md").checked],
+  };
+"""
+    )
+
+    assert payload["allMatch"] is True
+    assert payload["yearMiss"] is False
+    assert payload["authorMiss"] is False
+    assert payload["proceedingSourceMatch"] is True
+    assert all(value in {"", False} for value in payload["filters"].values())
+    assert payload["searchMode"] == "metadata"
+    assert payload["ranked"] is None
+    assert payload["sortKey"] == "year"
+    assert payload["sortDir"] == "desc"
+    assert payload["controlValues"] == ["", "", "", "", "", "", "", ""]
+    assert payload["checks"] == [False, False]
+
+
+def test_library_view_app_ranked_search_orders_results_and_ignores_stale_responses() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [
+    { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
+    { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
+  ];
+  state.searchMode = "unified";
+  els.searchMode.value = "unified";
+  els.searchInput.value = "first query";
+  state.filters.search = "first query";
+  state.filters.title = "alpha";
+  els.titleFilter.value = "alpha";
+  const first = runRankedSearch();
+  await Promise.resolve();
+
+  els.searchInput.value = "second query";
+  state.filters.search = "second query";
+  state.filters.title = "";
+  els.titleFilter.value = "";
+  const second = runRankedSearch();
+  await Promise.resolve();
+
+  __searchResolvers[1]({
+    mode: "unified",
+    query: "second query",
+    total: 2,
+    results: [
+      { paper_id: "paper-b", rank: 1, score: 0.0328, match: "both" },
+      { paper_id: "paper-a", rank: 2, score: 0.0164, match: "keyword" },
+    ],
+    diagnostics: {
+      status: "degraded",
+      message: "Semantic search is unavailable; results use keyword retrieval only.",
+      keyword: "available",
+      semantic: "unavailable",
+      actions: [{ command: "scholaraio embed", label: "Build semantic embeddings" }],
+    },
+  });
+  await second;
+  __searchResolvers[0]({
+    mode: "unified",
+    query: "first query",
+    total: 1,
+    results: [{ paper_id: "paper-a", rank: 1, score: 1, match: "both" }],
+    diagnostics: { status: "ok", message: "stale", keyword: "available", semantic: "available", actions: [] },
+  });
+  await first;
+
+  const ordered = filteredRows().map((row) => row.paper_id);
+  const betaRank = rankingFor("paper-b");
+  const diagnostics = els.searchDiagnostics.textContent;
+  const diagnosticsKind = els.searchDiagnostics.dataset.kind;
+  els.searchInput.value = "cancelled query";
+  state.filters.search = "cancelled query";
+  const cancelled = runRankedSearch();
+  await Promise.resolve();
+  switchTab("proceedings");
+  const cancelledButtonLabel = els.searchButton.textContent;
+  const cancelledButtonBusy = els.searchButton.getAttribute("aria-busy");
+  __searchResolvers[2]({
+    mode: "unified",
+    query: "cancelled query",
+    total: 1,
+    results: [{ paper_id: "paper-a", rank: 1, score: 1, match: "both" }],
+    diagnostics: { status: "ok", message: "cancelled", keyword: "available", semantic: "available", actions: [] },
+  });
+  await cancelled;
+  await Promise.resolve();
+  return {
+    requests: __searchRequests,
+    ordered,
+    betaRank,
+    diagnostics,
+    diagnosticsKind,
+    modeAfterProceedings: state.searchMode,
+    proceedingsMessage: els.searchDiagnostics.textContent,
+    cancelledButtonLabel,
+    cancelledButtonBusy,
+  };
+""",
+        fetch_setup=r"""
+context.__searchRequests = [];
+context.__searchResolvers = [];
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      search_modes: { main: ["metadata", "keyword", "semantic", "unified"], proceedings: ["metadata"] },
+    }) };
+  }
+  if (target.includes("/api/main/search")) {
+    context.__searchRequests.push(target);
+    return new Promise((resolve) => context.__searchResolvers.push((payload) => resolve({
+      ok: true,
+      json: async () => payload,
+    })));
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert len(payload["requests"]) == 3
+    assert "mode=unified" in payload["requests"][0]
+    assert "q=first+query" in payload["requests"][0]
+    assert "title=alpha" in payload["requests"][0]
+    assert "q=second+query" in payload["requests"][1]
+    assert payload["ordered"] == ["paper-b", "paper-a"]
+    assert payload["betaRank"] == {"rank": 1, "score": 0.0328, "match": "both"}
+    assert payload["diagnosticsKind"] == "degraded"
+    assert "Semantic search is unavailable" in payload["diagnostics"]
+    assert payload["modeAfterProceedings"] == "metadata"
+    assert "Proceedings" in payload["proceedingsMessage"]
+    assert payload["cancelledButtonLabel"] == "Search"
+    assert payload["cancelledButtonBusy"] == "false"
+
+
+def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.selected.main = "action-paper";
+  state.capabilities = {
+    csrfToken: "csrf-token",
+    nativePdfOpen: true,
+    nativePdfReason: "",
+  };
+  const detail = {
+    paper_id: "action-paper",
+    dir_name: "Doe-2026-Action",
+    title: "Action paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=action-paper",
+    authors_text: "Jane Doe",
+    issues: [],
+    toc: [],
+  };
+  state.detail = detail;
+  renderDetail(detail);
+  navigator.clipboard.writeText = async () => { throw new Error("clipboard denied"); };
+  await copySelectedBibtex();
+  const copiedText = document.__selectedText;
+  const copyFeedback = els.toast.textContent;
+  await openSelectedPdfNative();
+  const nativeFeedback = els.toast.textContent;
+  const nativeRequest = __requests.find((request) => request.url.includes("/open-pdf"));
+
+  renderDetail({ ...detail, has_pdf: false, pdf_url: "" });
+  const noPdfDisabled = [els.previewPdfButton.disabled, els.nativePdfButton.disabled];
+  state.capabilities.nativePdfOpen = false;
+  state.capabilities.nativePdfReason = "Loopback only";
+  renderDetail(detail);
+
+  return {
+    copiedText,
+    copyFeedback,
+    nativeFeedback,
+    nativeRequest,
+    noPdfDisabled,
+    nativeDisabled: els.nativePdfButton.disabled,
+    nativeTitle: els.nativePdfButton.title,
+    temporaryNodes: document.body.children.length,
+    copyButtonBusy: els.copyBibtexButton.disabled,
+  };
+""",
+        fetch_setup=r"""
+context.__requests = [];
+context.fetch = async (url, options = {}) => {
+  const target = String(url);
+  context.__requests.push({ url: target, options });
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      search_modes: { main: ["metadata", "keyword", "semantic", "unified"], proceedings: ["metadata"] },
+    }) };
+  }
+  if (target.includes("/bibtex")) {
+    return { ok: true, json: async () => ({ paper_id: "action-paper", bibtex: "@article{Doe2026Action,\n}" }) };
+  }
+  if (target.includes("/open-pdf")) {
+    return { ok: true, json: async () => ({ status: "opened", paper_id: "action-paper" }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["copiedText"] == "@article{Doe2026Action,\n}"
+    assert "BibTeX copied" in payload["copyFeedback"]
+    assert "default viewer" in payload["nativeFeedback"]
+    request = payload["nativeRequest"]
+    assert request["options"]["method"] == "POST"
+    assert request["options"]["headers"]["Content-Type"] == "application/json"
+    assert request["options"]["headers"]["X-ScholarAIO-CSRF"] == "csrf-token"
+    assert json.loads(request["options"]["body"]) == {"id": "action-paper"}
+    assert payload["noPdfDisabled"] == [True, True]
+    assert payload["nativeDisabled"] is True
+    assert payload["nativeTitle"] == "Loopback only"
+    assert payload["temporaryNodes"] == 0
+    assert payload["copyButtonBusy"] is False
+
+
+def test_library_view_app_reports_clipboard_fallback_failure_without_leaking_textarea() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.selected.main = "action-paper";
+  state.detail = { paper_id: "action-paper", title: "Action paper", has_pdf: false };
+  renderDetail(state.detail);
+  navigator.clipboard.writeText = async () => { throw new Error("denied"); };
+  document.__execCopy = false;
+  await copySelectedBibtex();
+  return {
+    message: els.toast.textContent,
+    kind: els.toast.dataset.kind,
+    temporaryNodes: document.body.children.length,
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/bibtex")) {
+    return { ok: true, json: async () => ({ bibtex: "@article{Failure}" }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert "Could not copy BibTeX" in payload["message"]
+    assert payload["kind"] == "error"
+    assert payload["temporaryNodes"] == 0
+
+
+def test_library_view_app_preserves_rows_for_unavailable_semantic_search() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [
+    { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
+    { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
+  ];
+  state.searchMode = "semantic";
+  els.searchMode.value = "semantic";
+  els.searchInput.value = "concept query";
+  await runRankedSearch();
+  return {
+    visible: filteredRows().map((row) => row.paper_id),
+    ranked: state.ranked,
+    message: els.searchDiagnostics.textContent,
+    kind: els.searchDiagnostics.dataset.kind,
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/api/main/search")) {
+    return { ok: true, json: async () => ({
+      mode: "semantic",
+      query: "concept query",
+      total: 0,
+      results: [],
+      diagnostics: {
+        status: "unavailable",
+        message: "Semantic search index or embedding provider is unavailable.",
+        keyword: "not_used",
+        semantic: "unavailable",
+        actions: [{ command: "scholaraio embed", label: "Build semantic embeddings" }],
+      },
+    }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["visible"] == ["paper-b", "paper-a"]
+    assert payload["ranked"] is None
+    assert payload["kind"] == "unavailable"
+    assert "scholaraio embed" in payload["message"]
+
+
 def test_library_view_static_assets_live_inside_package() -> None:
     from scholaraio.interfaces.cli.gui import _static_dir
 
@@ -234,6 +814,19 @@ def test_library_view_css_preserves_hidden_attribute_for_pdf_toolbar() -> None:
 
     assert "[hidden]" in css
     assert "display: none !important" in css
+
+
+def test_library_view_css_covers_focus_reduced_motion_and_workflow_states() -> None:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    css = (_static_dir() / "styles.css").read_text(encoding="utf-8")
+
+    assert ":focus-visible" in css
+    assert "prefers-reduced-motion: reduce" in css
+    assert '.search-diagnostics[data-kind="degraded"]' in css
+    assert ".detail-actions" in css
+    assert ".toast" in css
+    assert ".clipboard-fallback" in css
 
 
 def test_library_view_app_source_copy_fullscreen_and_compact_rows() -> None:

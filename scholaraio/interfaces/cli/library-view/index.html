@@ -53,10 +53,56 @@
           </div>
         </section>
 
-        <section class="monitor-card filter-card">
-          <div class="monitor-kicker">Filter</div>
-          <label class="field-label" for="search-input">Search</label>
-          <input class="text-input" id="search-input" type="search" autocomplete="off" placeholder="Title, author, DOI">
+        <section class="monitor-card filter-card" aria-labelledby="search-heading">
+          <div class="filter-heading-row">
+            <div>
+              <div class="monitor-kicker">Discover</div>
+              <div class="monitor-title filter-title" id="search-heading">Search &amp; filter</div>
+            </div>
+            <button class="soft-button compact-button" id="clear-filters-button" type="button">Clear all</button>
+          </div>
+
+          <label class="field-label" for="search-mode">Search mode</label>
+          <select class="select-input" id="search-mode">
+            <option value="metadata">Metadata</option>
+            <option value="keyword">Keyword</option>
+            <option value="semantic">Semantic</option>
+            <option value="unified">Unified</option>
+          </select>
+
+          <label class="field-label" for="search-input">Query</label>
+          <div class="search-query-row">
+            <input class="text-input" id="search-input" type="search" autocomplete="off" placeholder="Search this library">
+            <button class="primary-button" id="search-button" type="button" hidden>Search</button>
+          </div>
+          <div class="search-diagnostics" id="search-diagnostics" role="status" aria-live="polite">
+            Metadata mode filters the loaded records instantly.
+          </div>
+
+          <div class="filter-divider"></div>
+
+          <label class="field-label" for="title-filter">Title</label>
+          <input class="text-input" id="title-filter" type="search" autocomplete="off" placeholder="Contains title text">
+
+          <label class="field-label" for="author-filter">Author</label>
+          <input class="text-input" id="author-filter" type="search" autocomplete="off" placeholder="Name or partial name">
+
+          <div class="year-filter-grid">
+            <label>
+              <span class="field-label">Year from</span>
+              <input class="text-input" id="year-from-filter" type="number" inputmode="numeric" min="1000" max="9999" placeholder="From">
+            </label>
+            <label>
+              <span class="field-label">Year to</span>
+              <input class="text-input" id="year-to-filter" type="number" inputmode="numeric" min="1000" max="9999" placeholder="To">
+            </label>
+          </div>
+
+          <label class="field-label" for="journal-filter">Journal / source</label>
+          <input class="text-input" id="journal-filter" type="search" autocomplete="off" placeholder="Journal or proceedings">
+
+          <label class="field-label" for="doi-filter">DOI</label>
+          <input class="text-input" id="doi-filter" type="search" autocomplete="off" placeholder="10.xxxx/...">
 
           <label class="field-label" for="type-filter">Type</label>
           <select class="select-input" id="type-filter">
@@ -76,6 +122,7 @@
             <input id="filter-missing-md" type="checkbox">
             <span>Missing Markdown</span>
           </label>
+          <div class="active-filter-count" id="active-filter-count">No active filters</div>
         </section>
       </aside>
 
@@ -122,6 +169,12 @@
             <div class="monitor-title" id="detail-title">Select a record</div>
           </div>
 
+          <div class="detail-actions" id="detail-actions" hidden>
+            <button class="action-button action-button-primary" id="copy-bibtex-button" type="button">Copy BibTeX</button>
+            <button class="action-button" id="preview-pdf-button" type="button">Preview PDF</button>
+            <button class="action-button" id="native-pdf-button" type="button">Open in default viewer</button>
+          </div>
+
           <div class="detail-section">
             <div class="section-title">Metadata</div>
             <dl class="metadata-grid" id="metadata-grid"></dl>
@@ -151,6 +204,7 @@
       </aside>
     </section>
   </main>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
