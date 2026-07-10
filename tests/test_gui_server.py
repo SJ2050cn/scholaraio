@@ -117,6 +117,7 @@ def _run_library_app_vm(test_body: str, *, fetch_setup: str = "") -> dict:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = r"""
 const fs = require("fs");
@@ -221,8 +222,9 @@ context.fetch = async (url) => {
   return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
 };
 __FETCH_SETUP__
+const renderingCode = fs.readFileSync(__RENDERING_JS__, "utf8");
 const code = fs.readFileSync(__APP_JS__, "utf8");
-vm.runInNewContext(`${code}
+vm.runInNewContext(`${renderingCode}\n${code}
 globalThis.__ready = (async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 __TEST_BODY__
@@ -232,6 +234,7 @@ context.__ready.then((payload) => console.log(JSON.stringify(payload))).catch((e
   process.exit(1);
 });
 """
+    script = script.replace("__RENDERING_JS__", json.dumps(rendering_js))
     script = script.replace("__APP_JS__", json.dumps(app_js))
     script = script.replace("__FETCH_SETUP__", fetch_setup)
     script = script.replace("__TEST_BODY__", test_body)
@@ -319,7 +322,8 @@ def test_library_view_server_serves_static_console_shell(tmp_path):
         assert "http://" not in html
         assert "tex-chtml.js" not in html
         assert "MathJax" not in html
-        assert "app.js" in html
+        assert html.index("rendering.js") < html.index("app.js")
+        assert "workflows.css" in html
     finally:
         server.shutdown()
         server.server_close()
@@ -748,6 +752,9 @@ def test_library_view_app_preserves_rows_for_unavailable_semantic_search() -> No
     { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
     { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
   ];
+  state.ranked = { byId: new Map([["paper-a", { rank: 1, score: 1, match: "both" }]]) };
+  state.sortKey = "relevance";
+  state.sortDir = "asc";
   state.searchMode = "semantic";
   els.searchMode.value = "semantic";
   els.searchInput.value = "concept query";
@@ -795,6 +802,105 @@ context.fetch = async (url) => {
     assert "scholaraio embed" in payload["message"]
 
 
+def test_library_view_app_reconciles_hidden_selection_after_metadata_filter() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [
+    { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
+    { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
+  ];
+  state.selected.main = "paper-a";
+  state.detail = { paper_id: "paper-a", title: "Alpha", issues: [], toc: [] };
+  state.searchMode = "metadata";
+  state.filters.title = "Beta";
+  markRankedSearchDirty();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return {
+    selected: state.selected.main,
+    detail: state.detail?.paper_id,
+    visible: filteredRows().map((row) => row.paper_id),
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/api/main/detail") && target.includes("paper-b")) {
+    return { ok: true, json: async () => ({ paper_id: "paper-b", title: "Beta", issues: [], toc: [] }) };
+  }
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload == {"selected": "paper-b", "detail": "paper-b", "visible": ["paper-b"]}
+
+
+def test_library_view_app_keeps_record_action_busy_across_detail_refresh() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  const detail = {
+    paper_id: "action-paper",
+    title: "Action paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=action-paper",
+    issues: [],
+    toc: [],
+  };
+  state.detail = detail;
+  renderDetail(detail);
+  const copy = copySelectedBibtex();
+  await Promise.resolve();
+  renderDetail(detail);
+  const duringRefresh = {
+    disabled: els.copyBibtexButton.disabled,
+    label: els.copyBibtexButton.textContent,
+  };
+  __resolveBibtex();
+  await copy;
+  return {
+    duringRefresh,
+    after: {
+      disabled: els.copyBibtexButton.disabled,
+      label: els.copyBibtexButton.textContent,
+    },
+  };
+""",
+        fetch_setup=r"""
+context.__resolveBibtex = null;
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/bibtex")) {
+    return new Promise((resolve) => {
+      context.__resolveBibtex = () => resolve({
+        ok: true,
+        json: async () => ({ bibtex: "@article{Action}" }),
+      });
+    });
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["duringRefresh"] == {"disabled": True, "label": "Copying…"}
+    assert payload["after"] == {"disabled": False, "label": "Copy BibTeX"}
+
+
 def test_library_view_static_assets_live_inside_package() -> None:
     from scholaraio.interfaces.cli.gui import _static_dir
 
@@ -803,8 +909,10 @@ def test_library_view_static_assets_live_inside_package() -> None:
     assert static_dir.is_dir()
     assert static_dir.parent == Path(__file__).resolve().parents[1] / "scholaraio" / "interfaces" / "cli"
     assert (static_dir / "index.html").is_file()
+    assert (static_dir / "rendering.js").is_file()
     assert (static_dir / "app.js").is_file()
     assert (static_dir / "styles.css").is_file()
+    assert (static_dir / "workflows.css").is_file()
 
 
 def test_library_view_css_preserves_hidden_attribute_for_pdf_toolbar() -> None:
@@ -819,7 +927,7 @@ def test_library_view_css_preserves_hidden_attribute_for_pdf_toolbar() -> None:
 def test_library_view_css_covers_focus_reduced_motion_and_workflow_states() -> None:
     from scholaraio.interfaces.cli.gui import _static_dir
 
-    css = (_static_dir() / "styles.css").read_text(encoding="utf-8")
+    css = (_static_dir() / "workflows.css").read_text(encoding="utf-8")
 
     assert ":focus-visible" in css
     assert "prefers-reduced-motion: reduce" in css
@@ -835,6 +943,7 @@ def test_library_view_app_source_copy_fullscreen_and_compact_rows() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -899,8 +1008,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 (async () => {{
   state.payload.main = {{ root: "/tmp/scholaraio/data/libraries/papers", total: 1, issue_totals: {{}} }};
   renderMetrics();
@@ -945,6 +1055,7 @@ def test_library_view_app_ignores_stale_refresh_and_detail_responses() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -1017,8 +1128,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 globalThis.__ready = (async () => {{
   controlled = true;
   state.tab = "main";
@@ -1084,6 +1196,7 @@ def test_library_view_app_detail_failure_fallback_has_no_commands() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -1150,8 +1263,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 globalThis.__ready = (async () => {{
   renderDetail = (detail) => {{ globalThis.__captured = detail; }};
   state.tab = "main";
@@ -1179,6 +1293,7 @@ def test_library_view_app_missing_markdown_status_is_not_clean() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -1222,8 +1337,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 globalThis.__result = statusPills({{ has_md: false, issue_counts: {{}} }}).map((pill) => pill[0]);
 `, context);
 console.log(JSON.stringify(context.__result));
@@ -1240,6 +1356,7 @@ def test_library_view_app_renders_markdown_and_math_in_detail_text() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     abstract = json.dumps("Flow **energy** is $E_i = mc^2$. <script>alert(1)</script>")
     conclusion = json.dumps(r"Conclusion with $$\alpha + \beta$$.")
@@ -1289,8 +1406,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 renderDetail({{
   title: "Formula paper",
   abstract: globalThis.__abstract,
@@ -1321,6 +1439,7 @@ def test_library_view_app_treats_single_newlines_as_soft_breaks_in_detail_text()
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     abstract = json.dumps("We estimate\n$E_i = mc^2$\nfrom extracted features.")
     script = f"""
@@ -1368,8 +1487,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 renderDetail({{
   title: "Wrapped formula paper",
   abstract: globalThis.__abstract,
@@ -1407,6 +1527,7 @@ def test_library_view_tab_switch_resets_stale_type_filter() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -1456,8 +1577,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 state.filters.type = "journal-article";
 els.typeFilter.value = "journal-article";
 switchTab("proceedings");
@@ -1665,6 +1787,43 @@ def test_library_view_native_open_rejects_non_post_methods(tmp_path, method):
             urlopen(request, timeout=3)
 
     assert caught.value.code == HTTPStatus.METHOD_NOT_ALLOWED
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "allowed"),
+    [
+        ("/api/main/open-pdf", "GET", "POST"),
+        ("/api/health", "OPTIONS", "GET, HEAD"),
+    ],
+)
+def test_library_view_method_errors_keep_contract_and_security_headers(tmp_path, path, method, allowed):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        request = Request(f"{base_url}{path}", method=method)
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+
+    assert caught.value.code == HTTPStatus.METHOD_NOT_ALLOWED
+    assert caught.value.headers["Allow"] == allowed
+    assert "default-src 'self'" in caught.value.headers["Content-Security-Policy"]
+    assert caught.value.headers["X-Content-Type-Options"] == "nosniff"
+    assert "Access-Control-Allow-Origin" not in caught.value.headers
+
+
+def test_library_view_unknown_methods_still_receive_secure_json_errors(tmp_path):
+    cfg = _build_config({}, tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        request = Request(f"{base_url}/api/health", method="PROPFIND")
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.NOT_IMPLEMENTED
+    assert payload["code"] == "http_error"
+    assert "default-src 'self'" in caught.value.headers["Content-Security-Policy"]
+    assert caught.value.headers["X-Content-Type-Options"] == "nosniff"
 
 
 @pytest.mark.parametrize(

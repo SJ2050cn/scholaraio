@@ -12,7 +12,14 @@ from urllib.parse import quote
 
 from scholaraio.services.audit import Issue, audit_papers
 from scholaraio.services.export import meta_to_bibtex
-from scholaraio.stores.papers import best_citation, find_pdf, iter_paper_dirs, normalize_paper_type, read_meta
+from scholaraio.stores.papers import (
+    authors_text,
+    best_citation,
+    find_pdf,
+    iter_paper_dirs,
+    normalize_paper_type,
+    read_meta,
+)
 from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
 
 if TYPE_CHECKING:
@@ -33,14 +40,6 @@ class LibraryPdfNotFoundError(KeyError):
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _authors_text(authors: object) -> str:
-    if isinstance(authors, str):
-        return authors
-    if isinstance(authors, (list, tuple)):
-        return ", ".join(str(author) for author in authors if author)
-    return ""
 
 
 def _bool_has_text(value: object) -> bool:
@@ -130,7 +129,7 @@ def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
         "dir_name": paper_dir.name,
         "title": meta.get("title") or "",
         "authors": meta.get("authors") or [],
-        "authors_text": _authors_text(meta.get("authors") or []),
+        "authors_text": authors_text(meta.get("authors") or []),
         "year": meta.get("year") or "",
         "journal": meta.get("journal") or "",
         "doi": meta.get("doi") or "",
@@ -228,7 +227,7 @@ def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues
         "dir_name": row.get("dir_name") or "",
         "title": row.get("title") or meta.get("title") or "",
         "authors": meta.get("authors") or [],
-        "authors_text": row.get("authors") or _authors_text(meta.get("authors") or []),
+        "authors_text": row.get("authors") or authors_text(meta.get("authors") or []),
         "year": row.get("year") or "",
         "journal": row.get("journal") or "",
         "doi": row.get("doi") or "",
@@ -282,7 +281,7 @@ def _iter_proceedings_view_records(cfg: Config):
             row = {
                 "paper_id": paper_meta.get("id") or paper_dir.name,
                 "title": paper_meta.get("title") or "",
-                "authors": _authors_text(paper_meta.get("authors") or []),
+                "authors": authors_text(paper_meta.get("authors") or []),
                 "year": str(paper_meta.get("year") or ""),
                 "journal": paper_meta.get("journal") or "",
                 "abstract": paper_meta.get("abstract") or "",

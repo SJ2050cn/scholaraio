@@ -310,114 +310,6 @@ h1 {
   gap: 9px;
 }
 
-.filter-heading-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 4px;
-}
-
-.filter-title {
-  margin-top: 4px;
-}
-
-.search-query-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-}
-
-.primary-button,
-.action-button {
-  appearance: none;
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.88);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 650;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease;
-}
-
-.primary-button {
-  min-height: 34px;
-  padding: 0 12px;
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent);
-}
-
-.primary-button:hover:not(:disabled),
-.action-button-primary:hover:not(:disabled) {
-  background: var(--accent-strong);
-  transform: translateY(-1px);
-}
-
-.primary-button:disabled,
-.action-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.48;
-}
-
-.search-diagnostics {
-  min-height: 34px;
-  padding: 8px 9px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
-  border-radius: 7px;
-  color: var(--muted);
-  background: var(--accent-soft);
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.search-diagnostics[data-kind="loading"] {
-  border-left-color: var(--accent);
-  color: var(--text);
-}
-
-.search-diagnostics[data-kind="ok"] {
-  border-left-color: var(--ok);
-  background: rgba(105, 180, 114, 0.08);
-}
-
-.search-diagnostics[data-kind="degraded"] {
-  border-left-color: var(--warn);
-  background: rgba(235, 150, 84, 0.09);
-}
-
-.search-diagnostics[data-kind="error"],
-.search-diagnostics[data-kind="unavailable"] {
-  border-left-color: var(--danger);
-  background: rgba(223, 120, 120, 0.08);
-}
-
-.filter-divider {
-  height: 1px;
-  margin: 3px 0;
-  background: var(--line);
-}
-
-.year-filter-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.year-filter-grid label {
-  display: grid;
-  gap: 6px;
-}
-
-.active-filter-count {
-  padding-top: 7px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 11px;
-}
 
 .field-label {
   margin-top: 5px;
@@ -454,13 +346,6 @@ h1 {
   box-shadow: 0 0 0 3px rgba(93, 143, 223, 0.12);
 }
 
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-summary:focus-visible {
-  outline: 2px solid rgba(93, 143, 223, 0.78);
-  outline-offset: 2px;
-}
 
 .check-row {
   display: flex;
@@ -662,63 +547,6 @@ button.pill {
   overflow: auto;
 }
 
-.detail-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-
-.action-button {
-  min-height: 34px;
-  padding: 7px 10px;
-  line-height: 1.25;
-}
-
-.action-button-primary {
-  grid-column: 1 / -1;
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent);
-}
-
-.relevance-line {
-  color: var(--accent-strong);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.35;
-  text-transform: uppercase;
-}
-
-.toast {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 60;
-  max-width: min(420px, calc(100vw - 32px));
-  padding: 11px 14px;
-  border: 1px solid rgba(105, 180, 114, 0.3);
-  border-radius: 9px;
-  color: var(--text);
-  background: rgba(249, 255, 250, 0.98);
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.toast[data-kind="error"] {
-  border-color: rgba(223, 120, 120, 0.35);
-  background: rgba(255, 248, 248, 0.98);
-}
-
-.clipboard-fallback {
-  position: fixed;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
 
 .detail-section {
   display: grid;
@@ -971,33 +799,5 @@ summary.section-title {
   .table-panel.is-pdf-fullscreen {
     inset: 0;
     border-radius: 0;
-  }
-}
-
-@media (max-width: 520px) {
-  .search-query-row,
-  .year-filter-grid,
-  .detail-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .action-button-primary {
-    grid-column: auto;
-  }
-
-  .toast {
-    right: 12px;
-    bottom: 12px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
   }
 }

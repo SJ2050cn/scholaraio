@@ -41,6 +41,15 @@ def normalize_paper_type(value: object) -> str:
     return aliases.get(compact, text)
 
 
+def authors_text(authors: object) -> str:
+    """Return display/search text for supported author metadata shapes."""
+    if isinstance(authors, str):
+        return authors
+    if isinstance(authors, (list, tuple)):
+        return ", ".join(str(author) for author in authors if author)
+    return ""
+
+
 def paper_dir(papers_dir: Path, dir_name: str) -> Path:
     """Return the directory path for a paper."""
     return papers_dir / dir_name

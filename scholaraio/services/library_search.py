@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from scholaraio.stores.papers import iter_paper_dirs, normalize_paper_type, read_meta
+from scholaraio.stores.papers import authors_text, iter_paper_dirs, normalize_paper_type, read_meta
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -91,14 +91,6 @@ class LibrarySearchFilters:
         return None
 
 
-def _authors_text(authors: object) -> str:
-    if isinstance(authors, str):
-        return authors
-    if isinstance(authors, (list, tuple)):
-        return ", ".join(str(author) for author in authors if author)
-    return ""
-
-
 def _contains(value: object, needle: str) -> bool:
     return needle.casefold() in str(value or "").casefold()
 
@@ -113,7 +105,7 @@ def _safe_year(value: object) -> int | None:
 def _matches_filters(meta: dict, filters: LibrarySearchFilters) -> bool:
     if filters.title and not _contains(meta.get("title"), filters.title):
         return False
-    if filters.author and not _contains(_authors_text(meta.get("authors")), filters.author):
+    if filters.author and not _contains(authors_text(meta.get("authors")), filters.author):
         return False
     if filters.journal and not _contains(meta.get("journal") or meta.get("source"), filters.journal):
         return False
@@ -208,7 +200,7 @@ def _normalize_results(raw_results: list[dict], mode: str, candidates: dict[str,
                 "score": score,
                 "match": match_names.get(raw_match, raw_match),
                 "title": raw.get("title") or meta.get("title") or "",
-                "authors": raw.get("authors") or _authors_text(meta.get("authors")),
+                "authors": raw.get("authors") or authors_text(meta.get("authors")),
                 "year": raw.get("year") or meta.get("year") or "",
                 "journal": raw.get("journal") or meta.get("journal") or "",
                 "dir_name": raw.get("dir_name") or candidate["dir_name"],

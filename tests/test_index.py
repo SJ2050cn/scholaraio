@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from scholaraio.services.index import build_index, lookup_paper, search, unified_search
+from scholaraio.services.index import build_index, lookup_paper, search, search_author, unified_search
 
 
 class TestBuildAndSearch:
@@ -36,6 +36,33 @@ class TestBuildAndSearch:
         build_index(tmp_papers, tmp_db)
         results = search("xyznonexistent", tmp_db)
         assert results == []
+
+    def test_search_punctuation_only_query_returns_empty(self, tmp_papers, tmp_db):
+        build_index(tmp_papers, tmp_db)
+
+        assert search("+++", tmp_db) == []
+
+    def test_build_index_preserves_legacy_string_authors(self, tmp_path, tmp_db):
+        papers_dir = tmp_path / "papers"
+        paper_dir = papers_dir / "Doe-2026-LegacyAuthors"
+        paper_dir.mkdir(parents=True)
+        (paper_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "id": "legacy-authors",
+                    "title": "Legacy author metadata",
+                    "authors": "Jane Doe",
+                    "year": 2026,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        build_index(papers_dir, tmp_db)
+
+        assert [result["paper_id"] for result in search_author("Jane", tmp_db)] == ["legacy-authors"]
+        with sqlite3.connect(tmp_db) as conn:
+            assert conn.execute("SELECT authors FROM papers").fetchone()[0] == "Jane Doe"
 
     def test_search_by_abstract_content(self, tmp_papers, tmp_db):
         build_index(tmp_papers, tmp_db)

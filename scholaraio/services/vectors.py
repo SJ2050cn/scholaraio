@@ -1150,10 +1150,24 @@ def vsearch(
     q_vec = _embed_query_vector(query, cfg)
     index, faiss_ids = _build_faiss_index(db_path)
 
-    # Post-filters must see every ranked candidate; a fixed over-fetch window
-    # can silently miss the only qualifying paper below that window.
-    fetch_k = index.ntotal if (year or journal or paper_type or paper_ids is not None) else top_k
+    # Metadata filters may place the only qualifying record anywhere in the
+    # exact FAISS ranking, so they still require every candidate. An ID-only
+    # whitelist has a tighter exact bound: fetch top_k plus every vector that
+    # is known to be outside the whitelist. This preserves correctness without
+    # asking FAISS to materialize the entire ranking for the common dense case.
+    if year or journal or paper_type:
+        fetch_k = index.ntotal
+    elif paper_ids is not None:
+        excluded_count = sum(paper_id not in paper_ids for paper_id in faiss_ids)
+        eligible_count = index.ntotal - excluded_count
+        if eligible_count <= 0:
+            return []
+        fetch_k = excluded_count + min(top_k, eligible_count)
+    else:
+        fetch_k = top_k
     fetch_k = min(fetch_k, index.ntotal)
+    if fetch_k <= 0:
+        return []
     scores, indices = index.search(q_vec, fetch_k)
 
     # Load metadata from FTS5 table

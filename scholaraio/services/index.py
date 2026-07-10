@@ -21,7 +21,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict, overload
 
-from scholaraio.stores.papers import best_citation, normalize_paper_type, parse_year_range
+from scholaraio.stores.papers import authors_text, best_citation, normalize_paper_type, parse_year_range
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -120,7 +120,7 @@ def _index_hash(meta: dict) -> str:
     """Compute a short hash of the fields indexed in FTS5."""
     parts = [
         meta.get("title") or "",
-        ", ".join(meta.get("authors") or []),
+        authors_text(meta.get("authors")),
         str(meta.get("year") or ""),
         meta.get("journal") or "",
         meta.get("abstract") or "",
@@ -246,7 +246,7 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
                 (
                     paper_id,
                     meta.get("title") or "",
-                    ", ".join(meta.get("authors") or []),
+                    authors_text(meta.get("authors")),
                     str(meta.get("year") or ""),
                     meta.get("journal") or "",
                     meta.get("abstract") or "",
@@ -552,9 +552,13 @@ def search(
     if not db_path.exists():
         raise FileNotFoundError(f"Index file does not exist: {db_path}\nRun `scholaraio index` first")
 
+    safe_query = _safe_query(query)
+
     conn = sqlite3.connect(db_path)
     try:
         _ensure_fts_table(conn)
+        if not safe_query:
+            return []
 
         conn.row_factory = sqlite3.Row
         filter_sql, filter_params = _build_filter_clause(year=year, journal=journal, paper_type=paper_type)
@@ -568,7 +572,7 @@ def search(
             ORDER BY rank
             LIMIT ?
             """,
-            [_safe_query(query), *filter_params, top_k],
+            [safe_query, *filter_params, top_k],
         ).fetchall()
         results = [dict(r) for r in rows]
         _enrich_dir_names(results, conn)

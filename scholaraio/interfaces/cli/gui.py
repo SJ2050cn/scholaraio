@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from scholaraio.core.config import Config
 
 _MAX_JSON_BODY_BYTES = 64 * 1024
+_NATIVE_PDF_OPEN_PATHS = frozenset({"/api/main/open-pdf", "/api/proceedings/open-pdf"})
 _CONTENT_SECURITY_POLICY = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
@@ -97,6 +98,15 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, _format: str, *_args) -> None:
         return
 
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """Keep protocol/parser failures on the same secure JSON surface."""
+        del explain
+        try:
+            status = HTTPStatus(code)
+        except ValueError:
+            status = HTTPStatus.INTERNAL_SERVER_ERROR
+        self._send_error_json(status, message or status.phrase, code="http_error")
+
     def _send_security_headers(self, *, allow_same_origin_frame: bool = False) -> None:
         frame_ancestors = "'self'" if allow_same_origin_frame else "'none'"
         self.send_header(
@@ -150,6 +160,17 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
 
     def _query_id(self) -> str:
         return self._query_value("id")
+
+    def _required_query_id(self) -> str | None:
+        paper_id = self._query_id()
+        if paper_id:
+            return paper_id
+        self._send_error_json(
+            HTTPStatus.BAD_REQUEST,
+            "missing id query parameter",
+            code="missing_paper_id",
+        )
+        return None
 
     def _origin_is_same_loopback_server(self) -> bool:
         origin = str(self.headers.get("Origin") or "").strip()
@@ -324,24 +345,14 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, payload)
                 return
             if path == "/api/main/detail":
-                paper_id = self._query_id()
-                if not paper_id:
-                    self._send_error_json(
-                        HTTPStatus.BAD_REQUEST,
-                        "missing id query parameter",
-                        code="missing_paper_id",
-                    )
+                paper_id = self._required_query_id()
+                if paper_id is None:
                     return
                 self._send_json(HTTPStatus.OK, get_main_paper_detail(self.cfg, paper_id))
                 return
             if path == "/api/main/bibtex":
-                paper_id = self._query_id()
-                if not paper_id:
-                    self._send_error_json(
-                        HTTPStatus.BAD_REQUEST,
-                        "missing id query parameter",
-                        code="missing_paper_id",
-                    )
+                paper_id = self._required_query_id()
+                if paper_id is None:
                     return
                 self._send_json(
                     HTTPStatus.OK,
@@ -349,13 +360,8 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             if path == "/api/main/pdf":
-                paper_id = self._query_id()
-                if not paper_id:
-                    self._send_error_json(
-                        HTTPStatus.BAD_REQUEST,
-                        "missing id query parameter",
-                        code="missing_paper_id",
-                    )
+                paper_id = self._required_query_id()
+                if paper_id is None:
                     return
                 self._send_pdf(get_main_paper_pdf(self.cfg, paper_id))
                 return
@@ -363,24 +369,14 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, build_proceedings_library_view(self.cfg))
                 return
             if path == "/api/proceedings/detail":
-                paper_id = self._query_id()
-                if not paper_id:
-                    self._send_error_json(
-                        HTTPStatus.BAD_REQUEST,
-                        "missing id query parameter",
-                        code="missing_paper_id",
-                    )
+                paper_id = self._required_query_id()
+                if paper_id is None:
                     return
                 self._send_json(HTTPStatus.OK, get_proceedings_paper_detail(self.cfg, paper_id))
                 return
             if path == "/api/proceedings/bibtex":
-                paper_id = self._query_id()
-                if not paper_id:
-                    self._send_error_json(
-                        HTTPStatus.BAD_REQUEST,
-                        "missing id query parameter",
-                        code="missing_paper_id",
-                    )
+                paper_id = self._required_query_id()
+                if paper_id is None:
                     return
                 self._send_json(
                     HTTPStatus.OK,
@@ -388,13 +384,8 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             if path == "/api/proceedings/pdf":
-                paper_id = self._query_id()
-                if not paper_id:
-                    self._send_error_json(
-                        HTTPStatus.BAD_REQUEST,
-                        "missing id query parameter",
-                        code="missing_paper_id",
-                    )
+                paper_id = self._required_query_id()
+                if paper_id is None:
                     return
                 self._send_pdf(get_proceedings_paper_pdf(self.cfg, paper_id))
                 return
@@ -439,6 +430,9 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
+        if path in _NATIVE_PDF_OPEN_PATHS:
+            self._reject_write(allowed="POST")
+            return
         if path.startswith("/api/"):
             self._handle_api(path)
             return
@@ -447,12 +441,14 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self.do_GET()
 
-    def _reject_write(self) -> None:
+    def _reject_write(self, *, allowed: str | None = None) -> None:
+        path = urlparse(getattr(self, "path", "")).path
+        allowed = allowed or ("POST" if path in _NATIVE_PDF_OPEN_PATHS else "GET, HEAD")
         self.close_connection = True
         self._send_error_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
-            "this library WebUI is read-only for library data and does not allow that method",
-            headers={"Allow": "GET, HEAD", "Connection": "close"},
+            "this library WebUI is read-only for library data and does not allow that method on this route",
+            headers={"Allow": allowed, "Connection": "close"},
         )
 
     def _handle_native_pdf_open(self, source: str) -> None:
@@ -547,6 +543,15 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         self._reject_write()
 
     def do_DELETE(self) -> None:
+        self._reject_write()
+
+    def do_OPTIONS(self) -> None:
+        self._reject_write()
+
+    def do_TRACE(self) -> None:
+        self._reject_write()
+
+    def do_CONNECT(self) -> None:
         self._reject_write()
 
 
