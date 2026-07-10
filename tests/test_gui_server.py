@@ -5,17 +5,110 @@ import json
 import shutil
 import subprocess
 import threading
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import pytest
 
 from scholaraio.core.config import _build_config
+
+
+@contextmanager
+def _running_library_server(cfg, *, host="127.0.0.1"):
+    from scholaraio.interfaces.cli.gui import create_library_view_server
+
+    server = create_library_view_server(cfg, host=host, port=0)
+    bound_host, port = server.server_address[:2]
+    connect_host = "127.0.0.1" if bound_host in {"0.0.0.0", "::"} else bound_host
+    if ":" in connect_host and not connect_host.startswith("["):
+        connect_host = f"[{connect_host}]"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server, f"http://{connect_host}:{port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _json_response(url: str) -> tuple[dict, object]:
+    with urlopen(url, timeout=3) as response:
+        return json.loads(response.read().decode("utf-8")), response.headers
+
+
+def _post_json(
+    url: str,
+    payload: object,
+    *,
+    token: str = "",
+    origin: str = "",
+    content_type: str = "application/json",
+):
+    headers = {"Content-Type": content_type}
+    if token:
+        headers["X-ScholarAIO-CSRF"] = token
+    if origin:
+        headers["Origin"] = origin
+    return Request(
+        url,
+        method="POST",
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+    )
+
+
+def _write_gui_action_fixtures(tmp_path: Path, *, main_pdf: bool = True):
+    cfg = _build_config({}, tmp_path)
+    main_dir = cfg.papers_dir / "Doe-2026-Action"
+    main_dir.mkdir(parents=True)
+    (main_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "id": "action-paper",
+                "title": "Action paper",
+                "authors": ["Jane Doe"],
+                "first_author_lastname": "Doe",
+                "year": 2026,
+                "journal": "Journal of Actions",
+                "doi": "10.1000/action",
+                "abstract": "Canonical abstract.",
+                "paper_type": "journal-article",
+            }
+        ),
+        encoding="utf-8",
+    )
+    if main_pdf:
+        (main_dir / "Doe-2026-Action.pdf").write_bytes(b"%PDF-action")
+
+    proceeding_dir = cfg.proceedings_dir / "Proc-2026-Actions"
+    child_dir = proceeding_dir / "papers" / "Roe-2026-Proceeding"
+    child_dir.mkdir(parents=True)
+    (proceeding_dir / "meta.json").write_text(
+        json.dumps({"id": "proc-actions", "title": "Proceedings of Actions", "year": 2026}),
+        encoding="utf-8",
+    )
+    (child_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "id": "proceeding-action-paper",
+                "title": "Proceeding action paper",
+                "authors": ["Pat Roe"],
+                "first_author_lastname": "Roe",
+                "year": 2026,
+                "doi": "10.1000/proceeding-action",
+                "paper_type": "conference-paper",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (child_dir / "Roe-2026-Proceeding.pdf").write_bytes(b"%PDF-proceeding")
+    return cfg, main_dir, child_dir
 
 
 def test_library_view_api_serves_live_json_and_rejects_writes(tmp_path):
@@ -785,6 +878,401 @@ console.log(JSON.stringify(context.__result));
     assert json.loads(result.stdout) == {"type": "", "select": ""}
 
 
+def test_library_view_capabilities_are_per_server_and_loopback_aware(tmp_path):
+    cfg = _build_config({}, tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        payload, _headers = _json_response(f"{base_url}/api/capabilities")
+    with _running_library_server(cfg) as (_server, second_base_url):
+        second, _headers = _json_response(f"{second_base_url}/api/capabilities")
+
+    assert payload["csrf_token"]
+    assert payload["csrf_token"] != second["csrf_token"]
+    assert payload["native_pdf_open"] == {"enabled": True, "reason": ""}
+    assert payload["search_modes"] == {
+        "main": ["metadata", "keyword", "semantic", "unified"],
+        "proceedings": ["metadata"],
+    }
+
+    with _running_library_server(cfg, host="0.0.0.0") as (_server, wildcard_base_url):
+        wildcard, _headers = _json_response(f"{wildcard_base_url}/api/capabilities")
+    assert wildcard["native_pdf_open"]["enabled"] is False
+    assert "loopback" in wildcard["native_pdf_open"]["reason"].lower()
+
+
+def test_library_view_bibtex_endpoints_use_canonical_metadata(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        main, _headers = _json_response(f"{base_url}/api/main/bibtex?id=action-paper")
+        proceedings, _headers = _json_response(f"{base_url}/api/proceedings/bibtex?id=proceeding-action-paper")
+
+    assert main["paper_id"] == "action-paper"
+    assert main["bibtex"].startswith("@article{")
+    assert "author = {Jane Doe}" in main["bibtex"]
+    assert "abstract = {{Canonical abstract.}}" in main["bibtex"]
+    assert proceedings["paper_id"] == "proceeding-action-paper"
+    assert proceedings["bibtex"].startswith("@inproceedings{")
+    assert "booktitle = {Proceedings of Actions}" in proceedings["bibtex"]
+
+
+def test_library_view_ranked_search_endpoint_parses_structured_filters(tmp_path, monkeypatch):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_search(cfg_arg, *, query, mode, filters, limit):
+        captured.update(cfg=cfg_arg, query=query, mode=mode, filters=filters, limit=limit)
+        return {
+            "mode": mode,
+            "query": query,
+            "total": 1,
+            "results": [
+                {
+                    "paper_id": "action-paper",
+                    "rank": 1,
+                    "score": 0.03,
+                    "match": "both",
+                }
+            ],
+            "diagnostics": {
+                "status": "ok",
+                "message": "Both legs active.",
+                "keyword": "available",
+                "semantic": "available",
+                "actions": [],
+            },
+        }
+
+    monkeypatch.setattr("scholaraio.services.library_search.search_main_library", fake_search)
+    query = urlencode(
+        {
+            "mode": "unified",
+            "q": "reacting flow",
+            "title": "Action",
+            "author": "Doe",
+            "year_from": "2020",
+            "year_to": "2026",
+            "journal": "Actions",
+            "paper_type": "journal-article",
+            "doi": "10.1000/action",
+            "limit": "75",
+        }
+    )
+
+    with _running_library_server(cfg) as (_server, base_url):
+        payload, _headers = _json_response(f"{base_url}/api/main/search?{query}")
+
+    assert payload["results"][0]["paper_id"] == "action-paper"
+    assert captured["cfg"] is cfg
+    assert captured["query"] == "reacting flow"
+    assert captured["mode"] == "unified"
+    assert captured["limit"] == 75
+    filters = captured["filters"]
+    assert filters.title == "Action"
+    assert filters.author == "Doe"
+    assert filters.year_from == 2020
+    assert filters.year_to == 2026
+    assert filters.journal == "Actions"
+    assert filters.paper_type == "journal-article"
+    assert filters.doi == "10.1000/action"
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    [
+        ({"mode": "metadata", "q": "test"}, "invalid_search_mode"),
+        ({"mode": "keyword", "q": "test", "year_from": "not-a-year"}, "invalid_year"),
+        ({"mode": "keyword", "q": "test", "limit": "many"}, "invalid_search_limit"),
+    ],
+)
+def test_library_view_ranked_search_rejects_invalid_requests(tmp_path, query, code):
+    cfg = _build_config({}, tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        with pytest.raises(HTTPError) as caught:
+            urlopen(f"{base_url}/api/main/search?{urlencode(query)}", timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.BAD_REQUEST
+    assert payload["code"] == code
+
+
+def test_library_view_responses_include_browser_security_headers(tmp_path):
+    cfg = _build_config({}, tmp_path)
+    required = {
+        "Content-Security-Policy": "default-src 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+    }
+
+    with _running_library_server(cfg) as (_server, base_url):
+        for path in ("/", "/api/health"):
+            with urlopen(f"{base_url}{path}", timeout=3) as response:
+                response.read()
+                for name, expected in required.items():
+                    assert expected in response.headers[name]
+            assert "Access-Control-Allow-Origin" not in response.headers
+
+
+def test_library_view_native_open_uses_canonical_pdf_path(tmp_path):
+    cfg, main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+    assert payload == {"status": "opened", "paper_id": "action-paper"}
+    open_default.assert_called_once_with((main_dir / "Doe-2026-Action.pdf").resolve())
+
+
+def test_library_view_native_open_supports_proceedings_child_pdf(tmp_path):
+    cfg, _main_dir, child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/proceedings/open-pdf",
+            {"id": "proceeding-action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+    assert payload == {"status": "opened", "paper_id": "proceeding-action-paper"}
+    open_default.assert_called_once_with((child_dir / "Roe-2026-Proceeding.pdf").resolve())
+
+
+@pytest.mark.parametrize("method", ["PUT", "PATCH", "DELETE"])
+def test_library_view_native_open_rejects_non_post_methods(tmp_path, method):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        request = Request(
+            f"{base_url}/api/main/open-pdf",
+            method=method,
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+
+    assert caught.value.code == HTTPStatus.METHOD_NOT_ALLOWED
+
+
+@pytest.mark.parametrize(
+    ("token_kind", "origin_kind"),
+    [
+        ("missing", "valid"),
+        ("wrong", "valid"),
+        ("valid", "missing"),
+        ("valid", "cross-origin"),
+    ],
+)
+def test_library_view_native_open_rejects_csrf_and_cross_origin(
+    tmp_path,
+    token_kind,
+    origin_kind,
+):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        token = capabilities["csrf_token"] if token_kind == "valid" else ""
+        if token_kind == "wrong":
+            token = "wrong-token"
+        origin = base_url if origin_kind == "valid" else ""
+        if origin_kind == "cross-origin":
+            origin = "https://attacker.example"
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=token,
+            origin=origin,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.FORBIDDEN
+    assert payload["code"] in {"csrf_rejected", "origin_rejected"}
+    open_default.assert_not_called()
+
+
+def test_library_view_native_open_is_disabled_for_non_loopback_bind(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg, host="0.0.0.0") as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.FORBIDDEN
+    assert payload["code"] == "native_open_disabled"
+    open_default.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("payload", "content_type", "expected_status", "expected_code"),
+    [
+        (
+            {"id": "action-paper", "path": "/etc/passwd"},
+            "application/json",
+            HTTPStatus.BAD_REQUEST,
+            "invalid_request_body",
+        ),
+        (
+            {"id": "action-paper"},
+            "text/plain",
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+        ),
+    ],
+)
+def test_library_view_native_open_validates_request_schema(
+    tmp_path,
+    payload,
+    content_type,
+    expected_status,
+    expected_code,
+):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            payload,
+            token=capabilities["csrf_token"],
+            origin=base_url,
+            content_type=content_type,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        response_payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == expected_status
+    assert response_payload["code"] == expected_code
+    open_default.assert_not_called()
+
+
+def test_library_view_native_open_rejects_oversized_json(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = Request(
+            f"{base_url}/api/main/open-pdf",
+            method="POST",
+            data=b"{" + b"x" * (70 * 1024) + b"}",
+            headers={
+                "Content-Type": "application/json",
+                "X-ScholarAIO-CSRF": capabilities["csrf_token"],
+                "Origin": base_url,
+            },
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+    assert payload["code"] == "request_too_large"
+
+
+@pytest.mark.parametrize(
+    ("paper_id", "with_pdf", "expected_status", "expected_code"),
+    [
+        ("missing-paper", True, HTTPStatus.NOT_FOUND, "paper_not_found"),
+        ("action-paper", False, HTTPStatus.NOT_FOUND, "pdf_not_found"),
+    ],
+)
+def test_library_view_native_open_reports_missing_records_and_pdfs(
+    tmp_path,
+    paper_id,
+    with_pdf,
+    expected_status,
+    expected_code,
+):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path, main_pdf=with_pdf)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": paper_id},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == expected_status
+    assert payload["code"] == expected_code
+    open_default.assert_not_called()
+
+
+def test_library_view_native_open_reports_controlled_launcher_failure(tmp_path):
+    from scholaraio.services.system_open import DefaultApplicationOpenError
+
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch(
+            "scholaraio.services.system_open.open_with_default_application",
+            side_effect=DefaultApplicationOpenError("desktop unavailable"),
+        ),
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert payload["code"] == "native_open_failed"
+    assert "desktop unavailable" in payload["error"]
+
+
 def test_library_view_server_serves_main_pdf_inline(tmp_path):
     from scholaraio.interfaces.cli.gui import create_library_view_server
 
@@ -813,6 +1301,20 @@ def test_library_view_server_serves_main_pdf_inline(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_library_view_inline_pdf_security_headers_allow_same_origin_frame(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        _running_library_server(cfg) as (_server, base_url),
+        urlopen(f"{base_url}/api/main/pdf?id=action-paper", timeout=3) as response,
+    ):
+        response.read()
+        headers = response.headers
+
+    assert headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'self'" in headers["Content-Security-Policy"]
 
 
 def test_library_view_server_serves_non_ascii_pdf_filename(tmp_path):

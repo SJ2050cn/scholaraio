@@ -23,6 +23,14 @@ _AUDIT_CACHE: dict[str, tuple[float, dict[str, list[dict]]]] = {}
 _AUDIT_CACHE_LOCK = threading.Lock()
 
 
+class LibraryPaperNotFoundError(KeyError):
+    """Raised when a requested stable paper ID is not in the library."""
+
+
+class LibraryPdfNotFoundError(KeyError):
+    """Raised when a known paper does not have a local PDF."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -353,17 +361,23 @@ def get_proceedings_paper_bibtex(cfg: Config, paper_id: str) -> str:
 
 def get_main_paper_pdf(cfg: Config, paper_id: str) -> Path:
     """Return the local PDF path for one main-library paper."""
-    paper_dir, _meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+    try:
+        paper_dir, _meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+    except KeyError as exc:
+        raise LibraryPaperNotFoundError(paper_id) from exc
     pdf = find_pdf(paper_dir)
     if pdf is None:
-        raise KeyError(paper_id)
+        raise LibraryPdfNotFoundError(paper_id)
     return pdf
 
 
 def get_proceedings_paper_pdf(cfg: Config, paper_id: str) -> Path:
     """Return the local PDF path for one proceedings child paper."""
-    _row, paper_dir, _meta = _find_proceedings_row(cfg, paper_id)
+    try:
+        _row, paper_dir, _meta = _find_proceedings_row(cfg, paper_id)
+    except KeyError as exc:
+        raise LibraryPaperNotFoundError(paper_id) from exc
     pdf = find_pdf(paper_dir)
     if pdf is None:
-        raise KeyError(paper_id)
+        raise LibraryPdfNotFoundError(paper_id)
     return pdf
