@@ -134,7 +134,7 @@ scholaraio migrate finalize --migration-id <id> --confirm
 - `import-endnote` and `import-zotero` bring existing libraries into ScholarAIO.
 - `export` handles BibTeX, RIS, Markdown, and DOCX export.
 - `publish-site` generates a static site from audited `published/*/metadata.json` archives, copying PDF/source assets by default and supporting `--symlink` for local preview.
-- `gui` starts a local read-only WebUI for browsing the main paper library and proceedings child papers with live refresh, audit status, Markdown-rendered abstracts/conclusions, and local PDF preview. The WebUI serves only packaged local assets and does not load remote runtime scripts.
+- `gui` starts a local, library-read-only WebUI with live refresh, audit status, Markdown-rendered abstracts/conclusions, composable metadata filters, server-backed Keyword/Semantic/Unified retrieval for the main library, canonical per-record BibTeX copy, inline PDF preview, and a loopback-only action for opening canonical PDFs in the operating system's default viewer. The WebUI serves only packaged local assets and does not load remote runtime scripts. See the [Library WebUI guide](library-webui.md).
 - `ws` manages paper subsets for focused projects and writing workflows.
 
 ## Scientific Runtime And Documents

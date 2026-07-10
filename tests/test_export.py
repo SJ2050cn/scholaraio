@@ -51,6 +51,42 @@ class TestMetaToBibtex:
         assert "\\%" in bib
         assert "\\#" in bib
 
+    def test_string_authors_and_numeric_fields_are_normalized(self):
+        meta = {
+            "title": "Robust metadata",
+            "authors": "Doe, Jane and Roe, Alex",
+            "first_author_lastname": "Doe",
+            "year": 2026,
+            "journal": "Journal of Tests",
+            "volume": 12,
+            "issue": 3,
+            "pages": 42,
+            "paper_type": "journal-article",
+        }
+
+        bib = meta_to_bibtex(meta)
+
+        assert "author = {Doe, Jane and Roe, Alex}" in bib
+        assert "D and o and e" not in bib
+        assert "volume = {12}" in bib
+        assert "number = {3}" in bib
+        assert "pages = {42}" in bib
+
+    def test_conference_paper_includes_booktitle(self):
+        bib = meta_to_bibtex(
+            {
+                "title": "Conference result",
+                "authors": ["Pat Chen"],
+                "year": 2026,
+                "paper_type": "ConferencePaper",
+                "booktitle": "Proceedings of Tests",
+                "first_author_lastname": "Chen",
+            }
+        )
+
+        assert bib.startswith("@inproceedings{")
+        assert "booktitle = {Proceedings of Tests}" in bib
+
 
 class TestExportBibtex:
     """Batch export contract: filters work, output is concatenated entries."""

@@ -13,10 +13,41 @@ papers.py — 论文目录结构的唯一真相源
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+
+
+def normalize_paper_type(value: object) -> str:
+    """Return the canonical kebab-case paper type used by filters and views."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", raw)
+    text = re.sub(r"[\s_]+", "-", text).lower().strip("-")
+    text = re.sub(r"-+", "-", text)
+    compact = re.sub(r"[^a-z0-9]", "", text)
+    aliases = {
+        "article": "journal-article",
+        "journalarticle": "journal-article",
+        "researcharticle": "journal-article",
+        "proceedingsarticle": "conference-paper",
+        "conferencearticle": "conference-paper",
+        "conferencepaper": "conference-paper",
+        "bookchapter": "book-chapter",
+    }
+    return aliases.get(compact, text)
+
+
+def authors_text(authors: object) -> str:
+    """Return display/search text for supported author metadata shapes."""
+    if isinstance(authors, str):
+        return authors
+    if isinstance(authors, (list, tuple)):
+        return ", ".join(str(author) for author in authors if author)
+    return ""
 
 
 def paper_dir(papers_dir: Path, dir_name: str) -> Path:

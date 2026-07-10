@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from scholaraio.stores.papers import normalize_paper_type
+
 
 def _meta_year(meta: dict) -> int | None:
     """Normalize meta['year'] to int or None, tolerating string values."""
@@ -22,8 +24,9 @@ def _meta_year(meta: dict) -> int | None:
         return None
 
 
-def _bibtex_escape(text: str) -> str:
+def _bibtex_escape(text: object) -> str:
     """Escape special LaTeX characters in text."""
+    text = str(text)
     for ch in ("&", "%", "#", "_"):
         text = text.replace(ch, f"\\{ch}")
     return text
@@ -31,10 +34,10 @@ def _bibtex_escape(text: str) -> str:
 
 def _make_cite_key(meta: dict) -> str:
     """Generate a BibTeX citation key: LastName2023Title."""
-    last = meta.get("first_author_lastname") or "Unknown"
+    last = str(meta.get("first_author_lastname") or "Unknown")
     last = re.sub(r"[^a-zA-Z]", "", last)
     year = str(meta.get("year") or "")
-    title = meta.get("title") or ""
+    title = str(meta.get("title") or "")
     # first meaningful word of title (skip short words)
     word = ""
     for w in title.split():
@@ -66,7 +69,15 @@ def _type_to_bibtex(paper_type: str) -> str:
         "presentation": "misc",
         "meeting-notes": "misc",
     }
-    return mapping.get(paper_type or "", "article")
+    return mapping.get(normalize_paper_type(paper_type), "article")
+
+
+def _bibtex_authors(authors: object) -> str:
+    if isinstance(authors, str):
+        return authors.strip()
+    if isinstance(authors, (list, tuple)):
+        return " and ".join(str(author).strip() for author in authors if str(author).strip())
+    return str(authors or "").strip()
 
 
 def meta_to_bibtex(meta: dict) -> str:
@@ -85,24 +96,27 @@ def meta_to_bibtex(meta: dict) -> str:
 
     if meta.get("title"):
         fields.append(("title", "{" + _bibtex_escape(meta["title"]) + "}"))
-    if meta.get("authors"):
-        fields.append(("author", _bibtex_escape(" and ".join(meta["authors"]))))
+    authors = _bibtex_authors(meta.get("authors"))
+    if authors:
+        fields.append(("author", _bibtex_escape(authors)))
     if meta.get("year"):
         fields.append(("year", str(meta["year"])))
     if meta.get("journal"):
         fields.append(("journal", _bibtex_escape(meta["journal"])))
+    if meta.get("booktitle"):
+        fields.append(("booktitle", _bibtex_escape(meta["booktitle"])))
     if meta.get("volume"):
-        fields.append(("volume", meta["volume"]))
+        fields.append(("volume", str(meta["volume"])))
     if meta.get("issue"):
-        fields.append(("number", meta["issue"]))
+        fields.append(("number", str(meta["issue"])))
     if meta.get("pages"):
-        fields.append(("pages", meta["pages"]))
+        fields.append(("pages", str(meta["pages"])))
     if meta.get("publisher"):
         fields.append(("publisher", _bibtex_escape(meta["publisher"])))
     if meta.get("issn"):
-        fields.append(("issn", meta["issn"]))
+        fields.append(("issn", str(meta["issn"])))
     if meta.get("doi"):
-        fields.append(("doi", meta["doi"]))
+        fields.append(("doi", str(meta["doi"])))
     if meta.get("abstract"):
         fields.append(("abstract", "{" + _bibtex_escape(meta["abstract"]) + "}"))
 

@@ -7,6 +7,8 @@
   --text: #16202b;
   --muted: #73808c;
   --accent: #5d8fdf;
+  --accent-strong: #477bc8;
+  --accent-soft: rgba(93, 143, 223, 0.11);
   --danger: #df7878;
   --warn: #eb9654;
   --ok: #69b472;
@@ -308,6 +310,7 @@ h1 {
   gap: 9px;
 }
 
+
 .field-label {
   margin-top: 5px;
   color: var(--muted);
@@ -342,6 +345,7 @@ h1 {
   border-color: rgba(93, 143, 223, 0.58);
   box-shadow: 0 0 0 3px rgba(93, 143, 223, 0.12);
 }
+
 
 .check-row {
   display: flex;
@@ -542,6 +546,7 @@ button.pill {
   gap: 14px;
   overflow: auto;
 }
+
 
 .detail-section {
   display: grid;

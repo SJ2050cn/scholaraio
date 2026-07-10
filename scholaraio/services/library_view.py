@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -12,7 +11,15 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from scholaraio.services.audit import Issue, audit_papers
-from scholaraio.stores.papers import best_citation, find_pdf, iter_paper_dirs, read_meta
+from scholaraio.services.export import meta_to_bibtex
+from scholaraio.stores.papers import (
+    authors_text,
+    best_citation,
+    find_pdf,
+    iter_paper_dirs,
+    normalize_paper_type,
+    read_meta,
+)
 from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
 
 if TYPE_CHECKING:
@@ -23,40 +30,20 @@ _AUDIT_CACHE: dict[str, tuple[float, dict[str, list[dict]]]] = {}
 _AUDIT_CACHE_LOCK = threading.Lock()
 
 
+class LibraryPaperNotFoundError(KeyError):
+    """Raised when a requested stable paper ID is not in the library."""
+
+
+class LibraryPdfNotFoundError(KeyError):
+    """Raised when a known paper does not have a local PDF."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _authors_text(authors: object) -> str:
-    if isinstance(authors, str):
-        return authors
-    if isinstance(authors, (list, tuple)):
-        return ", ".join(str(author) for author in authors if author)
-    return ""
-
-
 def _bool_has_text(value: object) -> bool:
     return bool(str(value or "").strip())
-
-
-def _normalize_paper_type(value: object) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", raw)
-    text = re.sub(r"[\s_]+", "-", text).lower().strip("-")
-    text = re.sub(r"-+", "-", text)
-    compact = re.sub(r"[^a-z0-9]", "", text)
-    aliases = {
-        "article": "journal-article",
-        "journalarticle": "journal-article",
-        "researcharticle": "journal-article",
-        "proceedingsarticle": "conference-paper",
-        "conferencearticle": "conference-paper",
-        "conferencepaper": "conference-paper",
-        "bookchapter": "book-chapter",
-    }
-    return aliases.get(compact, text)
 
 
 def _pdf_url(source: str, paper_id: str) -> str:
@@ -142,11 +129,11 @@ def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
         "dir_name": paper_dir.name,
         "title": meta.get("title") or "",
         "authors": meta.get("authors") or [],
-        "authors_text": _authors_text(meta.get("authors") or []),
+        "authors_text": authors_text(meta.get("authors") or []),
         "year": meta.get("year") or "",
         "journal": meta.get("journal") or "",
         "doi": meta.get("doi") or "",
-        "paper_type": _normalize_paper_type(raw_type),
+        "paper_type": normalize_paper_type(raw_type),
         "paper_type_raw": raw_type,
         "citation_count": best_citation(meta),
         "has_md": md_file.exists(),
@@ -240,11 +227,11 @@ def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues
         "dir_name": row.get("dir_name") or "",
         "title": row.get("title") or meta.get("title") or "",
         "authors": meta.get("authors") or [],
-        "authors_text": row.get("authors") or _authors_text(meta.get("authors") or []),
+        "authors_text": row.get("authors") or authors_text(meta.get("authors") or []),
         "year": row.get("year") or "",
         "journal": row.get("journal") or "",
         "doi": row.get("doi") or "",
-        "paper_type": _normalize_paper_type(raw_type),
+        "paper_type": normalize_paper_type(raw_type),
         "paper_type_raw": raw_type,
         "proceeding_id": row.get("proceeding_id") or "",
         "proceeding_dir": row.get("proceeding_dir") or "",
@@ -294,7 +281,7 @@ def _iter_proceedings_view_records(cfg: Config):
             row = {
                 "paper_id": paper_meta.get("id") or paper_dir.name,
                 "title": paper_meta.get("title") or "",
-                "authors": _authors_text(paper_meta.get("authors") or []),
+                "authors": authors_text(paper_meta.get("authors") or []),
                 "year": str(paper_meta.get("year") or ""),
                 "journal": paper_meta.get("journal") or "",
                 "abstract": paper_meta.get("abstract") or "",
@@ -351,19 +338,45 @@ def get_proceedings_paper_detail(cfg: Config, paper_id: str) -> dict:
     }
 
 
+def get_main_paper_bibtex(cfg: Config, paper_id: str) -> str:
+    """Return canonical BibTeX for one main-library paper."""
+    _paper_dir, meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+    return meta_to_bibtex(meta)
+
+
+def get_proceedings_paper_bibtex(cfg: Config, paper_id: str) -> str:
+    """Return canonical BibTeX for one proceedings child paper."""
+    row, _paper_dir, meta = _find_proceedings_row(cfg, paper_id)
+    bib_meta = dict(meta)
+    for field in ("title", "authors", "year", "journal", "doi"):
+        if not bib_meta.get(field) and row.get(field):
+            bib_meta[field] = row[field]
+    bib_meta["paper_type"] = bib_meta.get("paper_type") or row.get("paper_type") or "conference-paper"
+    bib_meta["booktitle"] = (
+        bib_meta.get("booktitle") or bib_meta.get("proceeding_title") or row.get("proceeding_title") or ""
+    )
+    return meta_to_bibtex(bib_meta)
+
+
 def get_main_paper_pdf(cfg: Config, paper_id: str) -> Path:
     """Return the local PDF path for one main-library paper."""
-    paper_dir, _meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+    try:
+        paper_dir, _meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+    except KeyError as exc:
+        raise LibraryPaperNotFoundError(paper_id) from exc
     pdf = find_pdf(paper_dir)
     if pdf is None:
-        raise KeyError(paper_id)
+        raise LibraryPdfNotFoundError(paper_id)
     return pdf
 
 
 def get_proceedings_paper_pdf(cfg: Config, paper_id: str) -> Path:
     """Return the local PDF path for one proceedings child paper."""
-    _row, paper_dir, _meta = _find_proceedings_row(cfg, paper_id)
+    try:
+        _row, paper_dir, _meta = _find_proceedings_row(cfg, paper_id)
+    except KeyError as exc:
+        raise LibraryPaperNotFoundError(paper_id) from exc
     pdf = find_pdf(paper_dir)
     if pdf is None:
-        raise KeyError(paper_id)
+        raise LibraryPdfNotFoundError(paper_id)
     return pdf

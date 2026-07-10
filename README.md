@@ -86,7 +86,7 @@ run the migration in the upgraded checkout that contains your `data/`,
 | **Literature Exploration** | Multi-dimensional discovery | Explore a research direction through journal, topic, author, institution, keyword, year, citation impact, and more |
 | **Citation Graph** | References & impact | Forward citations, backward citations, and shared-reference analysis |
 | **Layered Reading** | Read on demand | Start with metadata or the abstract, then move into conclusions or full text only when you need to |
-| **Local Library WebUI** | Browse and inspect | Open a read-only local UI for records, audit status, Markdown abstracts/conclusions, proceedings children, and PDFs without exposing library data to remote scripts |
+| **Local Library WebUI** | Search, cite, and read | Filter records by field, run keyword/semantic/unified retrieval, copy canonical BibTeX, inspect audit status and Markdown summaries, and open PDFs inline or in the OS default viewer without exposing library data to remote scripts |
 | **Publisher PDF Fetch** | Use your current access | Fetch DOI or publisher-page PDFs through the user's legal network context, with direct campus-network mode and selected/all-library PDF refetch |
 | **Multi-Source Import** | Connect your existing library | Import directly from reference managers, fetched PDFs, local PDFs, and Markdown without rebuilding your library from scratch |
 | **Workspaces** | Organize by project | Manage paper subsets with scoped search and BibTeX export |

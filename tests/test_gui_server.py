@@ -5,17 +5,243 @@ import json
 import shutil
 import subprocess
 import threading
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import pytest
 
 from scholaraio.core.config import _build_config
+
+
+@contextmanager
+def _running_library_server(cfg, *, host="127.0.0.1"):
+    from scholaraio.interfaces.cli.gui import create_library_view_server
+
+    server = create_library_view_server(cfg, host=host, port=0)
+    bound_host, port = server.server_address[:2]
+    connect_host = "127.0.0.1" if bound_host in {"0.0.0.0", "::"} else bound_host
+    if ":" in connect_host and not connect_host.startswith("["):
+        connect_host = f"[{connect_host}]"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server, f"http://{connect_host}:{port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _json_response(url: str) -> tuple[dict, object]:
+    with urlopen(url, timeout=3) as response:
+        return json.loads(response.read().decode("utf-8")), response.headers
+
+
+def _post_json(
+    url: str,
+    payload: object,
+    *,
+    token: str = "",
+    origin: str = "",
+    content_type: str = "application/json",
+):
+    headers = {"Content-Type": content_type}
+    if token:
+        headers["X-ScholarAIO-CSRF"] = token
+    if origin:
+        headers["Origin"] = origin
+    return Request(
+        url,
+        method="POST",
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+    )
+
+
+def _write_gui_action_fixtures(tmp_path: Path, *, main_pdf: bool = True):
+    cfg = _build_config({}, tmp_path)
+    main_dir = cfg.papers_dir / "Doe-2026-Action"
+    main_dir.mkdir(parents=True)
+    (main_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "id": "action-paper",
+                "title": "Action paper",
+                "authors": ["Jane Doe"],
+                "first_author_lastname": "Doe",
+                "year": 2026,
+                "journal": "Journal of Actions",
+                "doi": "10.1000/action",
+                "abstract": "Canonical abstract.",
+                "paper_type": "journal-article",
+            }
+        ),
+        encoding="utf-8",
+    )
+    if main_pdf:
+        (main_dir / "Doe-2026-Action.pdf").write_bytes(b"%PDF-action")
+
+    proceeding_dir = cfg.proceedings_dir / "Proc-2026-Actions"
+    child_dir = proceeding_dir / "papers" / "Roe-2026-Proceeding"
+    child_dir.mkdir(parents=True)
+    (proceeding_dir / "meta.json").write_text(
+        json.dumps({"id": "proc-actions", "title": "Proceedings of Actions", "year": 2026}),
+        encoding="utf-8",
+    )
+    (child_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "id": "proceeding-action-paper",
+                "title": "Proceeding action paper",
+                "authors": ["Pat Roe"],
+                "first_author_lastname": "Roe",
+                "year": 2026,
+                "doi": "10.1000/proceeding-action",
+                "paper_type": "conference-paper",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (child_dir / "Roe-2026-Proceeding.pdf").write_bytes(b"%PDF-proceeding")
+    return cfg, main_dir, child_dir
+
+
+def _run_library_app_vm(test_body: str, *, fetch_setup: str = "") -> dict:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
+    app_js = (_static_dir() / "app.js").as_posix()
+    script = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+let document;
+function element(id) {
+  const classes = new Set();
+  const attributes = new Map();
+  const listeners = new Map();
+  const el = {
+    id,
+    dataset: {},
+    value: "",
+    checked: false,
+    disabled: false,
+    hidden: false,
+    title: "",
+    className: "",
+    children: [],
+    parentNode: null,
+    style: {},
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+      toggle(name, force) {
+        const enabled = force === undefined ? !classes.has(name) : Boolean(force);
+        if (enabled) classes.add(name);
+        else classes.delete(name);
+        return enabled;
+      },
+    },
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+    append(...items) { items.forEach((item) => this.appendChild(item)); },
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+      this.parentNode = null;
+    },
+    setAttribute(name, value) { attributes.set(name, String(value)); this[name] = String(value); },
+    getAttribute(name) { return attributes.get(name) || null; },
+    removeAttribute(name) { attributes.delete(name); delete this[name]; },
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    dispatch(name, event = {}) { return listeners.get(name)?.(event); },
+    focus() { document.activeElement = this; },
+    select() { document.__selectedText = this.value; },
+  };
+  let content = "";
+  Object.defineProperty(el, "textContent", {
+    get() { return content; },
+    set(value) { content = String(value ?? ""); if (content === "") el.children = []; },
+  });
+  return el;
+}
+
+const elements = new Map();
+const tabs = ["main", "proceedings"].map((tab) => {
+  const el = element(`tab-${tab}`);
+  el.dataset.tab = tab;
+  return el;
+});
+document = {
+  body: element("body"),
+  activeElement: null,
+  __selectedText: "",
+  __execCopy: true,
+  getElementById(id) {
+    if (!elements.has(id)) elements.set(id, element(id));
+    return elements.get(id);
+  },
+  createElement(tag) { return element(tag); },
+  querySelectorAll(selector) {
+    if (selector === ".tab") return tabs;
+    return [];
+  },
+  addEventListener() {},
+  execCommand(command) { return command === "copy" && this.__execCopy; },
+};
+const context = {
+  document,
+  elements,
+  navigator: { clipboard: { writeText: async () => {} } },
+  location: { origin: "http://127.0.0.1:8765" },
+  URLSearchParams,
+  setTimeout,
+  clearTimeout,
+  setInterval: () => 1,
+  clearInterval: () => {},
+  console,
+};
+context.window = context;
+context.fetch = async (url) => {
+  if (String(url).includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      search_modes: { main: ["metadata", "keyword", "semantic", "unified"], proceedings: ["metadata"] },
+    }) };
+  }
+  if (String(url).includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+__FETCH_SETUP__
+const renderingCode = fs.readFileSync(__RENDERING_JS__, "utf8");
+const code = fs.readFileSync(__APP_JS__, "utf8");
+vm.runInNewContext(`${renderingCode}\n${code}
+globalThis.__ready = (async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+__TEST_BODY__
+})();`, context);
+context.__ready.then((payload) => console.log(JSON.stringify(payload))).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+"""
+    script = script.replace("__RENDERING_JS__", json.dumps(rendering_js))
+    script = script.replace("__APP_JS__", json.dumps(app_js))
+    script = script.replace("__FETCH_SETUP__", fetch_setup)
+    script = script.replace("__TEST_BODY__", test_body)
+    result = subprocess.run([node, "-e", script], check=False, capture_output=True, text=True)
+    if result.returncode:
+        raise AssertionError(result.stderr or result.stdout)
+    return json.loads(result.stdout)
 
 
 def test_library_view_api_serves_live_json_and_rejects_writes(tmp_path):
@@ -96,7 +322,8 @@ def test_library_view_server_serves_static_console_shell(tmp_path):
         assert "http://" not in html
         assert "tex-chtml.js" not in html
         assert "MathJax" not in html
-        assert "app.js" in html
+        assert html.index("rendering.js") < html.index("app.js")
+        assert "workflows.css" in html
     finally:
         server.shutdown()
         server.server_close()
@@ -122,6 +349,558 @@ def test_library_view_shell_uses_compact_records_and_pdf_controls(tmp_path):
         server.server_close()
 
 
+def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path):
+    cfg = _build_config({}, tmp_path)
+
+    with (
+        _running_library_server(cfg) as (_server, base_url),
+        urlopen(f"{base_url}/", timeout=3) as response,
+    ):
+        html = response.read().decode("utf-8")
+
+    for control_id in (
+        "search-mode",
+        "search-input",
+        "search-button",
+        "title-filter",
+        "author-filter",
+        "year-from-filter",
+        "year-to-filter",
+        "journal-filter",
+        "doi-filter",
+        "type-filter",
+        "clear-filters-button",
+        "copy-bibtex-button",
+        "preview-pdf-button",
+        "native-pdf-button",
+    ):
+        assert f'id="{control_id}"' in html
+    assert 'id="search-diagnostics"' in html
+    assert 'aria-live="polite"' in html
+    assert 'id="toast"' in html
+    assert 'role="status"' in html
+    assert 'id="pdf-frame"' in html
+    assert "http://" not in html
+    assert "https://" not in html
+
+
+def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [{
+    paper_id: "target-paper",
+    dir_name: "Doe-2024-Target",
+    title: "Turbulence closure for reacting flows",
+    authors_text: "Jane Doe, Pat Roe",
+    year: 2024,
+    journal: "Journal of Fluid Mechanics",
+    doi: "10.1000/target",
+    paper_type: "journal-article",
+    has_md: false,
+    issue_counts: { warning: 1 },
+  }];
+  Object.assign(state.filters, {
+    search: "closure",
+    title: "reacting",
+    author: "JANE DOE",
+    yearFrom: "2020",
+    yearTo: "2024",
+    journal: "fluid mechanics",
+    doi: "10.1000/tar",
+    type: "journal-article",
+    volume: "",
+    issues: true,
+    missingMd: true,
+  });
+  const allMatch = rowMatches(state.rows.main[0]);
+  state.filters.yearFrom = "2025";
+  const yearMiss = rowMatches(state.rows.main[0]);
+  state.filters.yearFrom = "2020";
+  state.filters.author = "someone else";
+  const authorMiss = rowMatches(state.rows.main[0]);
+
+  state.tab = "proceedings";
+  const proceeding = {
+    paper_id: "proceeding-paper",
+    title: "Proceeding result",
+    authors_text: "Jane Doe",
+    year: 2024,
+    journal: "",
+    proceeding_title: "Proceedings of Fluid Actions",
+    doi: "10.1000/tar",
+    paper_type: "journal-article",
+    has_md: false,
+    issue_counts: { warning: 1 },
+  };
+  state.filters.author = "Jane Doe";
+  state.filters.title = "Proceeding";
+  state.filters.search = "result";
+  state.filters.journal = "fluid actions";
+  state.filters.volume = "Proceedings of Fluid Actions";
+  const proceedingSourceMatch = rowMatches(proceeding);
+
+  state.searchMode = "unified";
+  state.ranked = { order: ["proceeding-paper"], byId: new Map(), diagnostics: {} };
+  state.sortKey = "title";
+  state.sortDir = "asc";
+  for (const [id, value] of [
+    ["search-input", "result"],
+    ["title-filter", "Proceeding"],
+    ["author-filter", "Jane Doe"],
+    ["year-from-filter", "2020"],
+    ["year-to-filter", "2024"],
+    ["journal-filter", "fluid"],
+    ["doi-filter", "10.1000"],
+    ["type-filter", "journal-article"],
+  ]) elements.get(id).value = value;
+  elements.get("filter-issues").checked = true;
+  elements.get("filter-missing-md").checked = true;
+  clearAllFilters();
+
+  return {
+    allMatch,
+    yearMiss,
+    authorMiss,
+    proceedingSourceMatch,
+    filters: state.filters,
+    searchMode: state.searchMode,
+    ranked: state.ranked,
+    sortKey: state.sortKey,
+    sortDir: state.sortDir,
+    controlValues: [
+      elements.get("search-input").value,
+      elements.get("title-filter").value,
+      elements.get("author-filter").value,
+      elements.get("year-from-filter").value,
+      elements.get("year-to-filter").value,
+      elements.get("journal-filter").value,
+      elements.get("doi-filter").value,
+      elements.get("type-filter").value,
+    ],
+    checks: [elements.get("filter-issues").checked, elements.get("filter-missing-md").checked],
+  };
+"""
+    )
+
+    assert payload["allMatch"] is True
+    assert payload["yearMiss"] is False
+    assert payload["authorMiss"] is False
+    assert payload["proceedingSourceMatch"] is True
+    assert all(value in {"", False} for value in payload["filters"].values())
+    assert payload["searchMode"] == "metadata"
+    assert payload["ranked"] is None
+    assert payload["sortKey"] == "year"
+    assert payload["sortDir"] == "desc"
+    assert payload["controlValues"] == ["", "", "", "", "", "", "", ""]
+    assert payload["checks"] == [False, False]
+
+
+def test_library_view_app_ranked_search_orders_results_and_ignores_stale_responses() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [
+    { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
+    { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
+  ];
+  state.searchMode = "unified";
+  els.searchMode.value = "unified";
+  els.searchInput.value = "first query";
+  state.filters.search = "first query";
+  state.filters.title = "alpha";
+  els.titleFilter.value = "alpha";
+  const first = runRankedSearch();
+  await Promise.resolve();
+
+  els.searchInput.value = "second query";
+  state.filters.search = "second query";
+  state.filters.title = "";
+  els.titleFilter.value = "";
+  const second = runRankedSearch();
+  await Promise.resolve();
+
+  __searchResolvers[1]({
+    mode: "unified",
+    query: "second query",
+    total: 2,
+    results: [
+      { paper_id: "paper-b", rank: 1, score: 0.0328, match: "both" },
+      { paper_id: "paper-a", rank: 2, score: 0.0164, match: "keyword" },
+    ],
+    diagnostics: {
+      status: "degraded",
+      message: "Semantic search is unavailable; results use keyword retrieval only.",
+      keyword: "available",
+      semantic: "unavailable",
+      actions: [{ command: "scholaraio embed", label: "Build semantic embeddings" }],
+    },
+  });
+  await second;
+  __searchResolvers[0]({
+    mode: "unified",
+    query: "first query",
+    total: 1,
+    results: [{ paper_id: "paper-a", rank: 1, score: 1, match: "both" }],
+    diagnostics: { status: "ok", message: "stale", keyword: "available", semantic: "available", actions: [] },
+  });
+  await first;
+
+  const ordered = filteredRows().map((row) => row.paper_id);
+  const betaRank = rankingFor("paper-b");
+  const diagnostics = els.searchDiagnostics.textContent;
+  const diagnosticsKind = els.searchDiagnostics.dataset.kind;
+  els.searchInput.value = "cancelled query";
+  state.filters.search = "cancelled query";
+  const cancelled = runRankedSearch();
+  await Promise.resolve();
+  switchTab("proceedings");
+  const cancelledButtonLabel = els.searchButton.textContent;
+  const cancelledButtonBusy = els.searchButton.getAttribute("aria-busy");
+  __searchResolvers[2]({
+    mode: "unified",
+    query: "cancelled query",
+    total: 1,
+    results: [{ paper_id: "paper-a", rank: 1, score: 1, match: "both" }],
+    diagnostics: { status: "ok", message: "cancelled", keyword: "available", semantic: "available", actions: [] },
+  });
+  await cancelled;
+  await Promise.resolve();
+  return {
+    requests: __searchRequests,
+    ordered,
+    betaRank,
+    diagnostics,
+    diagnosticsKind,
+    modeAfterProceedings: state.searchMode,
+    proceedingsMessage: els.searchDiagnostics.textContent,
+    cancelledButtonLabel,
+    cancelledButtonBusy,
+  };
+""",
+        fetch_setup=r"""
+context.__searchRequests = [];
+context.__searchResolvers = [];
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      search_modes: { main: ["metadata", "keyword", "semantic", "unified"], proceedings: ["metadata"] },
+    }) };
+  }
+  if (target.includes("/api/main/search")) {
+    context.__searchRequests.push(target);
+    return new Promise((resolve) => context.__searchResolvers.push((payload) => resolve({
+      ok: true,
+      json: async () => payload,
+    })));
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert len(payload["requests"]) == 3
+    assert "mode=unified" in payload["requests"][0]
+    assert "q=first+query" in payload["requests"][0]
+    assert "title=alpha" in payload["requests"][0]
+    assert "q=second+query" in payload["requests"][1]
+    assert payload["ordered"] == ["paper-b", "paper-a"]
+    assert payload["betaRank"] == {"rank": 1, "score": 0.0328, "match": "both"}
+    assert payload["diagnosticsKind"] == "degraded"
+    assert "Semantic search is unavailable" in payload["diagnostics"]
+    assert payload["modeAfterProceedings"] == "metadata"
+    assert "Proceedings" in payload["proceedingsMessage"]
+    assert payload["cancelledButtonLabel"] == "Search"
+    assert payload["cancelledButtonBusy"] == "false"
+
+
+def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.selected.main = "action-paper";
+  state.capabilities = {
+    csrfToken: "csrf-token",
+    nativePdfOpen: true,
+    nativePdfReason: "",
+  };
+  const detail = {
+    paper_id: "action-paper",
+    dir_name: "Doe-2026-Action",
+    title: "Action paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=action-paper",
+    authors_text: "Jane Doe",
+    issues: [],
+    toc: [],
+  };
+  state.detail = detail;
+  renderDetail(detail);
+  navigator.clipboard.writeText = async () => { throw new Error("clipboard denied"); };
+  await copySelectedBibtex();
+  const copiedText = document.__selectedText;
+  const copyFeedback = els.toast.textContent;
+  await openSelectedPdfNative();
+  const nativeFeedback = els.toast.textContent;
+  const nativeRequest = __requests.find((request) => request.url.includes("/open-pdf"));
+
+  renderDetail({ ...detail, has_pdf: false, pdf_url: "" });
+  const noPdfDisabled = [els.previewPdfButton.disabled, els.nativePdfButton.disabled];
+  state.capabilities.nativePdfOpen = false;
+  state.capabilities.nativePdfReason = "Loopback only";
+  renderDetail(detail);
+
+  return {
+    copiedText,
+    copyFeedback,
+    nativeFeedback,
+    nativeRequest,
+    noPdfDisabled,
+    nativeDisabled: els.nativePdfButton.disabled,
+    nativeTitle: els.nativePdfButton.title,
+    temporaryNodes: document.body.children.length,
+    copyButtonBusy: els.copyBibtexButton.disabled,
+  };
+""",
+        fetch_setup=r"""
+context.__requests = [];
+context.fetch = async (url, options = {}) => {
+  const target = String(url);
+  context.__requests.push({ url: target, options });
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      search_modes: { main: ["metadata", "keyword", "semantic", "unified"], proceedings: ["metadata"] },
+    }) };
+  }
+  if (target.includes("/bibtex")) {
+    return { ok: true, json: async () => ({ paper_id: "action-paper", bibtex: "@article{Doe2026Action,\n}" }) };
+  }
+  if (target.includes("/open-pdf")) {
+    return { ok: true, json: async () => ({ status: "opened", paper_id: "action-paper" }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["copiedText"] == "@article{Doe2026Action,\n}"
+    assert "BibTeX copied" in payload["copyFeedback"]
+    assert "default viewer" in payload["nativeFeedback"]
+    request = payload["nativeRequest"]
+    assert request["options"]["method"] == "POST"
+    assert request["options"]["headers"]["Content-Type"] == "application/json"
+    assert request["options"]["headers"]["X-ScholarAIO-CSRF"] == "csrf-token"
+    assert json.loads(request["options"]["body"]) == {"id": "action-paper"}
+    assert payload["noPdfDisabled"] == [True, True]
+    assert payload["nativeDisabled"] is True
+    assert payload["nativeTitle"] == "Loopback only"
+    assert payload["temporaryNodes"] == 0
+    assert payload["copyButtonBusy"] is False
+
+
+def test_library_view_app_reports_clipboard_fallback_failure_without_leaking_textarea() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.selected.main = "action-paper";
+  state.detail = { paper_id: "action-paper", title: "Action paper", has_pdf: false };
+  renderDetail(state.detail);
+  navigator.clipboard.writeText = async () => { throw new Error("denied"); };
+  document.__execCopy = false;
+  await copySelectedBibtex();
+  return {
+    message: els.toast.textContent,
+    kind: els.toast.dataset.kind,
+    temporaryNodes: document.body.children.length,
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/bibtex")) {
+    return { ok: true, json: async () => ({ bibtex: "@article{Failure}" }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert "Could not copy BibTeX" in payload["message"]
+    assert payload["kind"] == "error"
+    assert payload["temporaryNodes"] == 0
+
+
+def test_library_view_app_preserves_rows_for_unavailable_semantic_search() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [
+    { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
+    { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
+  ];
+  state.ranked = { byId: new Map([["paper-a", { rank: 1, score: 1, match: "both" }]]) };
+  state.sortKey = "relevance";
+  state.sortDir = "asc";
+  state.searchMode = "semantic";
+  els.searchMode.value = "semantic";
+  els.searchInput.value = "concept query";
+  await runRankedSearch();
+  return {
+    visible: filteredRows().map((row) => row.paper_id),
+    ranked: state.ranked,
+    message: els.searchDiagnostics.textContent,
+    kind: els.searchDiagnostics.dataset.kind,
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/api/main/search")) {
+    return { ok: true, json: async () => ({
+      mode: "semantic",
+      query: "concept query",
+      total: 0,
+      results: [],
+      diagnostics: {
+        status: "unavailable",
+        message: "Semantic search index or embedding provider is unavailable.",
+        keyword: "not_used",
+        semantic: "unavailable",
+        actions: [{ command: "scholaraio embed", label: "Build semantic embeddings" }],
+      },
+    }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["visible"] == ["paper-b", "paper-a"]
+    assert payload["ranked"] is None
+    assert payload["kind"] == "unavailable"
+    assert "scholaraio embed" in payload["message"]
+
+
+def test_library_view_app_reconciles_hidden_selection_after_metadata_filter() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.rows.main = [
+    { paper_id: "paper-a", title: "Alpha", authors_text: "A", year: 2024, paper_type: "article" },
+    { paper_id: "paper-b", title: "Beta", authors_text: "B", year: 2025, paper_type: "article" },
+  ];
+  state.selected.main = "paper-a";
+  state.detail = { paper_id: "paper-a", title: "Alpha", issues: [], toc: [] };
+  state.searchMode = "metadata";
+  state.filters.title = "Beta";
+  markRankedSearchDirty();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return {
+    selected: state.selected.main,
+    detail: state.detail?.paper_id,
+    visible: filteredRows().map((row) => row.paper_id),
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/api/main/detail") && target.includes("paper-b")) {
+    return { ok: true, json: async () => ({ paper_id: "paper-b", title: "Beta", issues: [], toc: [] }) };
+  }
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload == {"selected": "paper-b", "detail": "paper-b", "visible": ["paper-b"]}
+
+
+def test_library_view_app_keeps_record_action_busy_across_detail_refresh() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  const detail = {
+    paper_id: "action-paper",
+    title: "Action paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=action-paper",
+    issues: [],
+    toc: [],
+  };
+  state.detail = detail;
+  renderDetail(detail);
+  const copy = copySelectedBibtex();
+  await Promise.resolve();
+  renderDetail(detail);
+  const duringRefresh = {
+    disabled: els.copyBibtexButton.disabled,
+    label: els.copyBibtexButton.textContent,
+  };
+  __resolveBibtex();
+  await copy;
+  return {
+    duringRefresh,
+    after: {
+      disabled: els.copyBibtexButton.disabled,
+      label: els.copyBibtexButton.textContent,
+    },
+  };
+""",
+        fetch_setup=r"""
+context.__resolveBibtex = null;
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+    }) };
+  }
+  if (target.includes("/bibtex")) {
+    return new Promise((resolve) => {
+      context.__resolveBibtex = () => resolve({
+        ok: true,
+        json: async () => ({ bibtex: "@article{Action}" }),
+      });
+    });
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["duringRefresh"] == {"disabled": True, "label": "Copying…"}
+    assert payload["after"] == {"disabled": False, "label": "Copy BibTeX"}
+
+
 def test_library_view_static_assets_live_inside_package() -> None:
     from scholaraio.interfaces.cli.gui import _static_dir
 
@@ -130,8 +909,10 @@ def test_library_view_static_assets_live_inside_package() -> None:
     assert static_dir.is_dir()
     assert static_dir.parent == Path(__file__).resolve().parents[1] / "scholaraio" / "interfaces" / "cli"
     assert (static_dir / "index.html").is_file()
+    assert (static_dir / "rendering.js").is_file()
     assert (static_dir / "app.js").is_file()
     assert (static_dir / "styles.css").is_file()
+    assert (static_dir / "workflows.css").is_file()
 
 
 def test_library_view_css_preserves_hidden_attribute_for_pdf_toolbar() -> None:
@@ -143,12 +924,26 @@ def test_library_view_css_preserves_hidden_attribute_for_pdf_toolbar() -> None:
     assert "display: none !important" in css
 
 
+def test_library_view_css_covers_focus_reduced_motion_and_workflow_states() -> None:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    css = (_static_dir() / "workflows.css").read_text(encoding="utf-8")
+
+    assert ":focus-visible" in css
+    assert "prefers-reduced-motion: reduce" in css
+    assert '.search-diagnostics[data-kind="degraded"]' in css
+    assert ".detail-actions" in css
+    assert ".toast" in css
+    assert ".clipboard-fallback" in css
+
+
 def test_library_view_app_source_copy_fullscreen_and_compact_rows() -> None:
     from scholaraio.interfaces.cli.gui import _static_dir
 
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -213,8 +1008,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 (async () => {{
   state.payload.main = {{ root: "/tmp/scholaraio/data/libraries/papers", total: 1, issue_totals: {{}} }};
   renderMetrics();
@@ -259,6 +1055,7 @@ def test_library_view_app_ignores_stale_refresh_and_detail_responses() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -331,8 +1128,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 globalThis.__ready = (async () => {{
   controlled = true;
   state.tab = "main";
@@ -398,6 +1196,7 @@ def test_library_view_app_detail_failure_fallback_has_no_commands() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -464,8 +1263,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 globalThis.__ready = (async () => {{
   renderDetail = (detail) => {{ globalThis.__captured = detail; }};
   state.tab = "main";
@@ -493,6 +1293,7 @@ def test_library_view_app_missing_markdown_status_is_not_clean() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -536,8 +1337,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 globalThis.__result = statusPills({{ has_md: false, issue_counts: {{}} }}).map((pill) => pill[0]);
 `, context);
 console.log(JSON.stringify(context.__result));
@@ -554,6 +1356,7 @@ def test_library_view_app_renders_markdown_and_math_in_detail_text() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     abstract = json.dumps("Flow **energy** is $E_i = mc^2$. <script>alert(1)</script>")
     conclusion = json.dumps(r"Conclusion with $$\alpha + \beta$$.")
@@ -603,8 +1406,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 renderDetail({{
   title: "Formula paper",
   abstract: globalThis.__abstract,
@@ -635,6 +1439,7 @@ def test_library_view_app_treats_single_newlines_as_soft_breaks_in_detail_text()
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     abstract = json.dumps("We estimate\n$E_i = mc^2$\nfrom extracted features.")
     script = f"""
@@ -682,8 +1487,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 renderDetail({{
   title: "Wrapped formula paper",
   abstract: globalThis.__abstract,
@@ -721,6 +1527,7 @@ def test_library_view_tab_switch_resets_stale_type_filter() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior regression")
+    rendering_js = (_static_dir() / "rendering.js").as_posix()
     app_js = (_static_dir() / "app.js").as_posix()
     script = f"""
 const fs = require("fs");
@@ -770,8 +1577,9 @@ const context = {{
   clearInterval: () => {{}},
   console,
 }};
+const renderingCode = fs.readFileSync({json.dumps(rendering_js)}, "utf8");
 const code = fs.readFileSync({json.dumps(app_js)}, "utf8");
-vm.runInNewContext(`${{code}}
+vm.runInNewContext(`${{renderingCode}}\n${{code}}
 state.filters.type = "journal-article";
 els.typeFilter.value = "journal-article";
 switchTab("proceedings");
@@ -783,6 +1591,438 @@ console.log(JSON.stringify(context.__result));
     result = subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
     assert json.loads(result.stdout) == {"type": "", "select": ""}
+
+
+def test_library_view_capabilities_are_per_server_and_loopback_aware(tmp_path):
+    cfg = _build_config({}, tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        payload, _headers = _json_response(f"{base_url}/api/capabilities")
+    with _running_library_server(cfg) as (_server, second_base_url):
+        second, _headers = _json_response(f"{second_base_url}/api/capabilities")
+
+    assert payload["csrf_token"]
+    assert payload["csrf_token"] != second["csrf_token"]
+    assert payload["native_pdf_open"] == {"enabled": True, "reason": ""}
+    assert payload["search_modes"] == {
+        "main": ["metadata", "keyword", "semantic", "unified"],
+        "proceedings": ["metadata"],
+    }
+
+    with _running_library_server(cfg, host="0.0.0.0") as (_server, wildcard_base_url):
+        wildcard, _headers = _json_response(f"{wildcard_base_url}/api/capabilities")
+    assert wildcard["native_pdf_open"]["enabled"] is False
+    assert "loopback" in wildcard["native_pdf_open"]["reason"].lower()
+
+
+def test_library_view_bibtex_endpoints_use_canonical_metadata(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        main, _headers = _json_response(f"{base_url}/api/main/bibtex?id=action-paper")
+        proceedings, _headers = _json_response(f"{base_url}/api/proceedings/bibtex?id=proceeding-action-paper")
+
+    assert main["paper_id"] == "action-paper"
+    assert main["bibtex"].startswith("@article{")
+    assert "author = {Jane Doe}" in main["bibtex"]
+    assert "abstract = {{Canonical abstract.}}" in main["bibtex"]
+    assert proceedings["paper_id"] == "proceeding-action-paper"
+    assert proceedings["bibtex"].startswith("@inproceedings{")
+    assert "booktitle = {Proceedings of Actions}" in proceedings["bibtex"]
+
+
+def test_library_view_ranked_search_endpoint_parses_structured_filters(tmp_path, monkeypatch):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_search(cfg_arg, *, query, mode, filters, limit):
+        captured.update(cfg=cfg_arg, query=query, mode=mode, filters=filters, limit=limit)
+        return {
+            "mode": mode,
+            "query": query,
+            "total": 1,
+            "results": [
+                {
+                    "paper_id": "action-paper",
+                    "rank": 1,
+                    "score": 0.03,
+                    "match": "both",
+                }
+            ],
+            "diagnostics": {
+                "status": "ok",
+                "message": "Both legs active.",
+                "keyword": "available",
+                "semantic": "available",
+                "actions": [],
+            },
+        }
+
+    monkeypatch.setattr("scholaraio.services.library_search.search_main_library", fake_search)
+    query = urlencode(
+        {
+            "mode": "unified",
+            "q": "reacting flow",
+            "title": "Action",
+            "author": "Doe",
+            "year_from": "2020",
+            "year_to": "2026",
+            "journal": "Actions",
+            "paper_type": "journal-article",
+            "doi": "10.1000/action",
+            "limit": "75",
+        }
+    )
+
+    with _running_library_server(cfg) as (_server, base_url):
+        payload, _headers = _json_response(f"{base_url}/api/main/search?{query}")
+
+    assert payload["results"][0]["paper_id"] == "action-paper"
+    assert captured["cfg"] is cfg
+    assert captured["query"] == "reacting flow"
+    assert captured["mode"] == "unified"
+    assert captured["limit"] == 75
+    filters = captured["filters"]
+    assert filters.title == "Action"
+    assert filters.author == "Doe"
+    assert filters.year_from == 2020
+    assert filters.year_to == 2026
+    assert filters.journal == "Actions"
+    assert filters.paper_type == "journal-article"
+    assert filters.doi == "10.1000/action"
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    [
+        ({"mode": "metadata", "q": "test"}, "invalid_search_mode"),
+        ({"mode": "keyword", "q": "test", "year_from": "not-a-year"}, "invalid_year"),
+        ({"mode": "keyword", "q": "test", "limit": "many"}, "invalid_search_limit"),
+    ],
+)
+def test_library_view_ranked_search_rejects_invalid_requests(tmp_path, query, code):
+    cfg = _build_config({}, tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        with pytest.raises(HTTPError) as caught:
+            urlopen(f"{base_url}/api/main/search?{urlencode(query)}", timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.BAD_REQUEST
+    assert payload["code"] == code
+
+
+def test_library_view_responses_include_browser_security_headers(tmp_path):
+    cfg = _build_config({}, tmp_path)
+    required = {
+        "Content-Security-Policy": "default-src 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+    }
+
+    with _running_library_server(cfg) as (_server, base_url):
+        for path in ("/", "/api/health"):
+            with urlopen(f"{base_url}{path}", timeout=3) as response:
+                response.read()
+                for name, expected in required.items():
+                    assert expected in response.headers[name]
+            assert "Access-Control-Allow-Origin" not in response.headers
+
+
+def test_library_view_native_open_uses_canonical_pdf_path(tmp_path):
+    cfg, main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+    assert payload == {"status": "opened", "paper_id": "action-paper"}
+    open_default.assert_called_once_with((main_dir / "Doe-2026-Action.pdf").resolve())
+
+
+def test_library_view_native_open_supports_proceedings_child_pdf(tmp_path):
+    cfg, _main_dir, child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/proceedings/open-pdf",
+            {"id": "proceeding-action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+    assert payload == {"status": "opened", "paper_id": "proceeding-action-paper"}
+    open_default.assert_called_once_with((child_dir / "Roe-2026-Proceeding.pdf").resolve())
+
+
+@pytest.mark.parametrize("method", ["PUT", "PATCH", "DELETE"])
+def test_library_view_native_open_rejects_non_post_methods(tmp_path, method):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        request = Request(
+            f"{base_url}/api/main/open-pdf",
+            method=method,
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+
+    assert caught.value.code == HTTPStatus.METHOD_NOT_ALLOWED
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "allowed"),
+    [
+        ("/api/main/open-pdf", "GET", "POST"),
+        ("/api/health", "OPTIONS", "GET, HEAD"),
+    ],
+)
+def test_library_view_method_errors_keep_contract_and_security_headers(tmp_path, path, method, allowed):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        request = Request(f"{base_url}{path}", method=method)
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+
+    assert caught.value.code == HTTPStatus.METHOD_NOT_ALLOWED
+    assert caught.value.headers["Allow"] == allowed
+    assert "default-src 'self'" in caught.value.headers["Content-Security-Policy"]
+    assert caught.value.headers["X-Content-Type-Options"] == "nosniff"
+    assert "Access-Control-Allow-Origin" not in caught.value.headers
+
+
+def test_library_view_unknown_methods_still_receive_secure_json_errors(tmp_path):
+    cfg = _build_config({}, tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        request = Request(f"{base_url}/api/health", method="PROPFIND")
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.NOT_IMPLEMENTED
+    assert payload["code"] == "http_error"
+    assert "default-src 'self'" in caught.value.headers["Content-Security-Policy"]
+    assert caught.value.headers["X-Content-Type-Options"] == "nosniff"
+
+
+@pytest.mark.parametrize(
+    ("token_kind", "origin_kind"),
+    [
+        ("missing", "valid"),
+        ("wrong", "valid"),
+        ("valid", "missing"),
+        ("valid", "cross-origin"),
+    ],
+)
+def test_library_view_native_open_rejects_csrf_and_cross_origin(
+    tmp_path,
+    token_kind,
+    origin_kind,
+):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        token = capabilities["csrf_token"] if token_kind == "valid" else ""
+        if token_kind == "wrong":
+            token = "wrong-token"
+        origin = base_url if origin_kind == "valid" else ""
+        if origin_kind == "cross-origin":
+            origin = "https://attacker.example"
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=token,
+            origin=origin,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.FORBIDDEN
+    assert payload["code"] in {"csrf_rejected", "origin_rejected"}
+    open_default.assert_not_called()
+
+
+def test_library_view_native_open_is_disabled_for_non_loopback_bind(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg, host="0.0.0.0") as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.FORBIDDEN
+    assert payload["code"] == "native_open_disabled"
+    open_default.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("payload", "content_type", "expected_status", "expected_code"),
+    [
+        (
+            {"id": "action-paper", "path": "/etc/passwd"},
+            "application/json",
+            HTTPStatus.BAD_REQUEST,
+            "invalid_request_body",
+        ),
+        (
+            {"id": "action-paper"},
+            "text/plain",
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+        ),
+    ],
+)
+def test_library_view_native_open_validates_request_schema(
+    tmp_path,
+    payload,
+    content_type,
+    expected_status,
+    expected_code,
+):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            payload,
+            token=capabilities["csrf_token"],
+            origin=base_url,
+            content_type=content_type,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        response_payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == expected_status
+    assert response_payload["code"] == expected_code
+    open_default.assert_not_called()
+
+
+def test_library_view_native_open_rejects_oversized_json(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = Request(
+            f"{base_url}/api/main/open-pdf",
+            method="POST",
+            data=b"{" + b"x" * (70 * 1024) + b"}",
+            headers={
+                "Content-Type": "application/json",
+                "X-ScholarAIO-CSRF": capabilities["csrf_token"],
+                "Origin": base_url,
+            },
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+    assert payload["code"] == "request_too_large"
+
+
+@pytest.mark.parametrize(
+    ("paper_id", "with_pdf", "expected_status", "expected_code"),
+    [
+        ("missing-paper", True, HTTPStatus.NOT_FOUND, "paper_not_found"),
+        ("action-paper", False, HTTPStatus.NOT_FOUND, "pdf_not_found"),
+    ],
+)
+def test_library_view_native_open_reports_missing_records_and_pdfs(
+    tmp_path,
+    paper_id,
+    with_pdf,
+    expected_status,
+    expected_code,
+):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path, main_pdf=with_pdf)
+
+    with (
+        patch("scholaraio.services.system_open.open_with_default_application") as open_default,
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": paper_id},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == expected_status
+    assert payload["code"] == expected_code
+    open_default.assert_not_called()
+
+
+def test_library_view_native_open_reports_controlled_launcher_failure(tmp_path):
+    from scholaraio.services.system_open import DefaultApplicationOpenError
+
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        patch(
+            "scholaraio.services.system_open.open_with_default_application",
+            side_effect=DefaultApplicationOpenError("desktop unavailable"),
+        ),
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert payload["code"] == "native_open_failed"
+    assert "desktop unavailable" in payload["error"]
 
 
 def test_library_view_server_serves_main_pdf_inline(tmp_path):
@@ -813,6 +2053,20 @@ def test_library_view_server_serves_main_pdf_inline(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_library_view_inline_pdf_security_headers_allow_same_origin_frame(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with (
+        _running_library_server(cfg) as (_server, base_url),
+        urlopen(f"{base_url}/api/main/pdf?id=action-paper", timeout=3) as response,
+    ):
+        response.read()
+        headers = response.headers
+
+    assert headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'self'" in headers["Content-Security-Policy"]
 
 
 def test_library_view_server_serves_non_ascii_pdf_filename(tmp_path):
