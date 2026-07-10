@@ -12,6 +12,7 @@ ScholarAIO is a research infrastructure for AI agents. You interact with your li
 - **Topic Modeling**: BERTopic clustering with interactive HTML visualizations
 - **Citation Graph**: View references, citing papers, and shared references
 - **BibTeX Export**: Filtered export with standard citation formats
+- **Library WebUI**: Browse, filter, run ranked retrieval, copy canonical BibTeX, and open PDFs inline or in the operating system's default viewer
 - **Paper Translation**: Translate papers with concurrent chunked LLM calls and optional portable bundles
 - **Literature Exploration**: Multi-dimensional OpenAlex queries with isolated data
 - **Workspace Management**: Organize papers into subsets for focused work
@@ -37,6 +38,7 @@ See [Repository Knowledge Map](DESIGN.md) for the agent-facing documentation str
 See [Agent Reference](guide/agent-reference.md) for the deeper agent, skill, and runtime map.
 See [Translation Guide](guide/translate.md) for translation, resume, and portable export behavior.
 See [Insights Guide](guide/insights.md) for reading/search behavior analytics.
+See [Library WebUI](guide/library-webui.md) for browser-based filtering, ranked search, citation copy, and PDF workflows.
 See [API Reference](api/index.md) for Python module documentation.
 
 ## Two Usage Modes
