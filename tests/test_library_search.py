@@ -4,7 +4,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from scholaraio.core.config import _build_config
@@ -256,13 +255,13 @@ def test_filtered_vector_modes_use_live_metadata_without_fts_table(tmp_path, mon
 
         def search(self, _query_vector, fetch_k):
             return (
-                np.array([[0.9][:fetch_k]], dtype="float32"),
-                np.array([[0][:fetch_k]], dtype="int64"),
+                [[0.9][:fetch_k]],
+                [[0][:fetch_k]],
             )
 
     monkeypatch.setattr(
         "scholaraio.services.vectors._embed_query_vector",
-        lambda _query, _cfg=None: np.array([[1.0, 0.0]], dtype="float32"),
+        lambda _query, _cfg=None: [[1.0, 0.0]],
     )
     monkeypatch.setattr(
         "scholaraio.services.vectors._build_faiss_index",
