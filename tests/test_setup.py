@@ -7,6 +7,7 @@ import os
 
 from scholaraio.core.config import Config
 from scholaraio.services.setup import (
+    DepGroupStatus,
     ParserChoice,
     _check_docling,
     _check_graphviz_dot,
@@ -19,6 +20,7 @@ from scholaraio.services.setup import (
     _wizard_keys,
     _wizard_parser,
     check_dep_group,
+    format_check_results,
     recommend_pdf_parser,
     run_check,
     run_wizard,
@@ -175,6 +177,29 @@ def test_run_check_includes_parser_recommendation(monkeypatch):
     assert "Docling" in labels
     assert "Hugging Face" in labels
     assert "PDF 解析器推荐" in labels
+
+
+def test_setup_check_english_output_is_cp1252_safe(tmp_path, monkeypatch):
+    cfg = Config()
+    cfg._root = tmp_path
+    monkeypatch.setattr(
+        "scholaraio.services.setup.check_dep_group",
+        lambda group: DepGroupStatus(group, installed=False, missing=["optional-package"]),
+    )
+    monkeypatch.setattr("scholaraio.services.setup.shutil.which", lambda _command: None)
+    monkeypatch.setattr("scholaraio.services.setup.check_mineru_server", lambda _endpoint: False)
+    monkeypatch.setattr("scholaraio.services.setup._probe_url", lambda _url, timeout=2: False)
+    monkeypatch.setattr("scholaraio.services.setup.check_websearch_service", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("scholaraio.services.setup.check_webextract_service", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("scholaraio.services.setup.list_paper2any_tools", lambda **_kwargs: [])
+    monkeypatch.setattr(cfg, "resolved_api_key", lambda: "")
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
+    monkeypatch.setattr(cfg, "resolved_s2_api_key", lambda: "")
+    monkeypatch.setattr(cfg, "resolved_zotero_api_key", lambda: "")
+
+    output = format_check_results(run_check(cfg, "en"))
+
+    output.encode("cp1252")
 
 
 def test_run_check_includes_pdf_office_and_draw_dependency_groups(monkeypatch):
