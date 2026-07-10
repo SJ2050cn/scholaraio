@@ -328,9 +328,6 @@ def search_main_library(
                 cfg.index_db,
                 top_k=bounded_limit,
                 cfg=cfg,
-                year=year,
-                journal=journal,
-                paper_type=paper_type,
                 paper_ids=paper_ids,
             )
             diagnostics = _diagnostics(
@@ -347,9 +344,6 @@ def search_main_library(
                 cfg.index_db,
                 top_k=bounded_limit,
                 cfg=cfg,
-                year=year,
-                journal=journal,
-                paper_type=paper_type,
                 paper_ids=paper_ids,
                 return_diagnostics=True,
             )
