@@ -5,6 +5,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from scholaraio.core.config import _build_config
 
 
@@ -511,3 +513,45 @@ def test_proceedings_detail_returns_volume_context_without_commands(tmp_path: Pa
     assert detail["proceeding_title"] == "Proceedings of Tests"
     assert detail["abstract"] == "Proceedings abstract."
     assert "commands" not in detail
+
+
+def test_main_library_bibtex_uses_canonical_full_metadata(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import get_main_paper_bibtex
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    _write_main_paper(
+        papers_root,
+        "Doe-2026-Bibtex",
+        paper_id="bibtex-paper",
+        title="Canonical & complete",
+        authors=["Jane Doe", "Pat Roe"],
+    )
+    cfg = _build_config({}, tmp_path)
+
+    bibtex = get_main_paper_bibtex(cfg, "bibtex-paper")
+
+    assert bibtex.startswith("@article{")
+    assert "title = {{Canonical \\& complete}}" in bibtex
+    assert "author = {Jane Doe and Pat Roe}" in bibtex
+    assert "doi = {10.1000/test}" in bibtex
+    assert "abstract = {{Abstract text.}}" in bibtex
+    with pytest.raises(KeyError):
+        get_main_paper_bibtex(cfg, "missing-paper")
+
+
+def test_proceedings_bibtex_uses_child_metadata_and_volume_context(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import get_proceedings_paper_bibtex
+
+    proceedings_root = tmp_path / "data" / "libraries" / "proceedings"
+    _write_proceedings_child(proceedings_root)
+    cfg = _build_config({}, tmp_path)
+
+    bibtex = get_proceedings_paper_bibtex(cfg, "proc-paper-1")
+
+    assert bibtex.startswith("@inproceedings{")
+    assert "title = {{Wave proceedings paper}}" in bibtex
+    assert "author = {Pat Chen}" in bibtex
+    assert "booktitle = {Proceedings of Tests}" in bibtex
+    assert "doi = {10.1000/proc}" in bibtex
+    with pytest.raises(KeyError):
+        get_proceedings_paper_bibtex(cfg, "missing-paper")

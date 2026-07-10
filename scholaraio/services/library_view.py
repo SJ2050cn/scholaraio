@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from scholaraio.services.audit import Issue, audit_papers
+from scholaraio.services.export import meta_to_bibtex
 from scholaraio.stores.papers import best_citation, find_pdf, iter_paper_dirs, normalize_paper_type, read_meta
 from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
 
@@ -328,6 +329,26 @@ def get_proceedings_paper_detail(cfg: Config, paper_id: str) -> dict:
         "ids": meta.get("ids") or {},
         "source_path": str(paper_dir),
     }
+
+
+def get_main_paper_bibtex(cfg: Config, paper_id: str) -> str:
+    """Return canonical BibTeX for one main-library paper."""
+    _paper_dir, meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+    return meta_to_bibtex(meta)
+
+
+def get_proceedings_paper_bibtex(cfg: Config, paper_id: str) -> str:
+    """Return canonical BibTeX for one proceedings child paper."""
+    row, _paper_dir, meta = _find_proceedings_row(cfg, paper_id)
+    bib_meta = dict(meta)
+    for field in ("title", "authors", "year", "journal", "doi"):
+        if not bib_meta.get(field) and row.get(field):
+            bib_meta[field] = row[field]
+    bib_meta["paper_type"] = bib_meta.get("paper_type") or row.get("paper_type") or "conference-paper"
+    bib_meta["booktitle"] = (
+        bib_meta.get("booktitle") or bib_meta.get("proceeding_title") or row.get("proceeding_title") or ""
+    )
+    return meta_to_bibtex(bib_meta)
 
 
 def get_main_paper_pdf(cfg: Config, paper_id: str) -> Path:
