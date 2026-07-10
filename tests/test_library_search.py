@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from scholaraio.core.config import _build_config
@@ -223,6 +225,63 @@ def test_library_search_calls_requested_service_directly(
     assert response["results"][0]["match"] == expected_match
     assert response["results"][0]["rank"] == 1
     assert isinstance(response["results"][0]["score"], float)
+
+
+@pytest.mark.parametrize("mode", ["semantic", "unified"])
+def test_filtered_vector_modes_use_live_metadata_without_fts_table(tmp_path, monkeypatch, mode):
+    cfg = _build_config({}, tmp_path)
+    _write_paper(
+        cfg.papers_dir,
+        "Doe-2024-Target",
+        paper_id="target-paper",
+        title="Target turbulence model",
+        authors=["Jane Doe"],
+        year=2024,
+        journal="Journal of Fluid Mechanics",
+        doi="10.1000/target",
+        paper_type="JournalArticle",
+    )
+    cfg.index_db.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(cfg.index_db) as conn:
+        conn.execute(
+            "CREATE TABLE paper_vectors (paper_id TEXT PRIMARY KEY, embedding BLOB NOT NULL, content_hash TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO paper_vectors (paper_id, embedding, content_hash) VALUES (?, ?, ?)",
+            ("target-paper", b"\x00\x00\x00\x00", ""),
+        )
+
+    class FakeIndex:
+        ntotal = 1
+
+        def search(self, _query_vector, fetch_k):
+            return (
+                np.array([[0.9][:fetch_k]], dtype="float32"),
+                np.array([[0][:fetch_k]], dtype="int64"),
+            )
+
+    monkeypatch.setattr(
+        "scholaraio.services.vectors._embed_query_vector",
+        lambda _query, _cfg=None: np.array([[1.0, 0.0]], dtype="float32"),
+    )
+    monkeypatch.setattr(
+        "scholaraio.services.vectors._build_faiss_index",
+        lambda _db_path: (FakeIndex(), ["target-paper"]),
+    )
+
+    response = search_main_library(
+        cfg,
+        query="turbulence",
+        mode=mode,
+        filters=LibrarySearchFilters.from_strings(
+            year_from="2020",
+            journal="fluid mechanics",
+            paper_type="journal-article",
+        ),
+    )
+
+    assert [result["paper_id"] for result in response["results"]] == ["target-paper"]
+    assert response["diagnostics"]["semantic"] == "available"
 
 
 def test_library_search_unified_reports_vector_degradation(tmp_path, monkeypatch):
