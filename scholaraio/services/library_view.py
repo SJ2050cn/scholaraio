@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -12,7 +11,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from scholaraio.services.audit import Issue, audit_papers
-from scholaraio.stores.papers import best_citation, find_pdf, iter_paper_dirs, read_meta
+from scholaraio.stores.papers import best_citation, find_pdf, iter_paper_dirs, normalize_paper_type, read_meta
 from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
 
 if TYPE_CHECKING:
@@ -37,26 +36,6 @@ def _authors_text(authors: object) -> str:
 
 def _bool_has_text(value: object) -> bool:
     return bool(str(value or "").strip())
-
-
-def _normalize_paper_type(value: object) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", raw)
-    text = re.sub(r"[\s_]+", "-", text).lower().strip("-")
-    text = re.sub(r"-+", "-", text)
-    compact = re.sub(r"[^a-z0-9]", "", text)
-    aliases = {
-        "article": "journal-article",
-        "journalarticle": "journal-article",
-        "researcharticle": "journal-article",
-        "proceedingsarticle": "conference-paper",
-        "conferencearticle": "conference-paper",
-        "conferencepaper": "conference-paper",
-        "bookchapter": "book-chapter",
-    }
-    return aliases.get(compact, text)
 
 
 def _pdf_url(source: str, paper_id: str) -> str:
@@ -146,7 +125,7 @@ def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
         "year": meta.get("year") or "",
         "journal": meta.get("journal") or "",
         "doi": meta.get("doi") or "",
-        "paper_type": _normalize_paper_type(raw_type),
+        "paper_type": normalize_paper_type(raw_type),
         "paper_type_raw": raw_type,
         "citation_count": best_citation(meta),
         "has_md": md_file.exists(),
@@ -244,7 +223,7 @@ def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues
         "year": row.get("year") or "",
         "journal": row.get("journal") or "",
         "doi": row.get("doi") or "",
-        "paper_type": _normalize_paper_type(raw_type),
+        "paper_type": normalize_paper_type(raw_type),
         "paper_type_raw": raw_type,
         "proceeding_id": row.get("proceeding_id") or "",
         "proceeding_dir": row.get("proceeding_dir") or "",

@@ -21,7 +21,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict, overload
 
-from scholaraio.stores.papers import best_citation, parse_year_range
+from scholaraio.stores.papers import best_citation, normalize_paper_type, parse_year_range
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -126,7 +126,7 @@ def _index_hash(meta: dict) -> str:
         meta.get("abstract") or "",
         meta.get("l3_conclusion") or "",
         meta.get("doi") or "",
-        meta.get("paper_type") or "",
+        normalize_paper_type(meta.get("paper_type")),
         ((meta.get("ids") or {}).get("patent_publication_number", "") or ""),
     ]
     cc = meta.get("citation_count")
@@ -252,7 +252,7 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
                     meta.get("abstract") or "",
                     meta.get("l3_conclusion") or "",
                     meta.get("doi") or "",
-                    meta.get("paper_type") or "",
+                    normalize_paper_type(meta.get("paper_type")),
                     str(best_cite) if best_cite is not None else "",
                     str(md_file) if md_file.exists() else "",
                 ),
