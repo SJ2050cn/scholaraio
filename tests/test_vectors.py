@@ -302,6 +302,40 @@ def test_vsearch_does_not_embed_when_vector_table_is_empty(tmp_db, monkeypatch):
         vectors.vsearch("turbulence", tmp_db, top_k=1)
 
 
+def test_vsearch_applies_filters_before_result_limit(tmp_db, monkeypatch):
+    with sqlite3.connect(tmp_db) as conn:
+        conn.execute(
+            "CREATE TABLE paper_vectors (paper_id TEXT PRIMARY KEY, embedding BLOB NOT NULL, content_hash TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO paper_vectors (paper_id, embedding, content_hash) VALUES (?, ?, ?)",
+            ("seed-paper", b"\x00\x00\x00\x00", ""),
+        )
+        conn.commit()
+
+    paper_ids = [*(f"decoy-{index}" for index in range(6)), "target-paper"]
+
+    class FakeIndex:
+        ntotal = len(paper_ids)
+
+        def search(self, _query_vector, fetch_k):
+            scores = np.array([[1.0 - index * 0.1 for index in range(fetch_k)]], dtype="float32")
+            indices = np.array([list(range(fetch_k))], dtype="int64")
+            return scores, indices
+
+    monkeypatch.setattr(vectors, "_embed_text", lambda _query, cfg=None: [1.0, 0.0])
+    monkeypatch.setattr(vectors, "_build_faiss_index", lambda _db_path: (FakeIndex(), paper_ids))
+
+    results = vectors.vsearch(
+        "needle",
+        tmp_db,
+        top_k=1,
+        paper_ids={"target-paper"},
+    )
+
+    assert [result["paper_id"] for result in results] == ["target-paper"]
+
+
 def test_explore_vsearch_embeds_query_before_loading_faiss_index(tmp_path, monkeypatch):
     order: list[str] = []
     cfg = _build_config({}, tmp_path)

@@ -28,7 +28,10 @@ if TYPE_CHECKING:
 
 
 class UnifiedSearchDiagnostics(TypedDict):
+    keyword_degraded: bool
     vector_degraded: bool
+    keyword_error: str
+    vector_error: str
 
 
 _SCHEMA = """
@@ -555,19 +558,17 @@ def search(
 
         conn.row_factory = sqlite3.Row
         filter_sql, filter_params = _build_filter_clause(year=year, journal=journal, paper_type=paper_type)
-
-        # Over-fetch when post-filtering by paper_ids to avoid empty results
-        fetch_k = top_k * 5 if paper_ids else top_k
+        allowed_sql = _prepare_allowed_paper_ids(conn, paper_ids)
 
         rows = conn.execute(
             f"""
             SELECT {_SEARCH_COLS}
             FROM papers
-            WHERE papers MATCH ?{filter_sql}
+            WHERE papers MATCH ?{filter_sql}{allowed_sql}
             ORDER BY rank
             LIMIT ?
             """,
-            [_safe_query(query), *filter_params, fetch_k],
+            [_safe_query(query), *filter_params, top_k],
         ).fetchall()
         results = [dict(r) for r in rows]
         _enrich_dir_names(results, conn)
@@ -616,19 +617,17 @@ def search_author(
 
         conn.row_factory = sqlite3.Row
         filter_sql, filter_params = _build_filter_clause(year=year, journal=journal, paper_type=paper_type)
-
-        # Over-fetch when post-filtering by paper_ids to avoid empty results
-        fetch_k = top_k * 5 if paper_ids else top_k
+        allowed_sql = _prepare_allowed_paper_ids(conn, paper_ids)
 
         rows = conn.execute(
             f"""
             SELECT {_SEARCH_COLS}
             FROM papers
-            WHERE authors LIKE ?{filter_sql}
+            WHERE authors LIKE ?{filter_sql}{allowed_sql}
             ORDER BY year DESC
             LIMIT ?
             """,
-            [f"%{query}%", *filter_params, fetch_k],
+            [f"%{query}%", *filter_params, top_k],
         ).fetchall()
         results = [dict(r) for r in rows]
         _enrich_dir_names(results, conn)
@@ -673,20 +672,17 @@ def top_cited(
 
         conn.row_factory = sqlite3.Row
         filter_sql, filter_params = _build_filter_clause(year=year, journal=journal, paper_type=paper_type)
-
-        # Skip SQL LIMIT when post-filtering by paper_ids (workspace scope)
-        limit_clause = "" if paper_ids else "LIMIT ?"
-        limit_params = [] if paper_ids else [top_k]
+        allowed_sql = _prepare_allowed_paper_ids(conn, paper_ids)
 
         rows = conn.execute(
             f"""
             SELECT {_SEARCH_COLS}
             FROM papers
-            WHERE citation_count != ''{filter_sql}
+            WHERE citation_count != ''{filter_sql}{allowed_sql}
             ORDER BY CAST(citation_count AS INTEGER) DESC
-            {limit_clause}
+            LIMIT ?
             """,
-            [*filter_params, *limit_params],
+            [*filter_params, top_k],
         ).fetchall()
         results = [dict(r) for r in rows]
         _enrich_dir_names(results, conn)
@@ -768,6 +764,23 @@ def _enrich_dir_names(results: list[dict], conn: sqlite3.Connection) -> list[dic
     for r in results:
         r["dir_name"] = id_to_dir.get(r["paper_id"], "")
     return results
+
+
+def _prepare_allowed_paper_ids(conn: sqlite3.Connection, paper_ids: set[str] | None) -> str:
+    """Install a connection-local ID whitelist and return its SQL predicate.
+
+    A temporary table avoids SQLite's bound-parameter limit for large workspaces
+    and, unlike post-filtering an already limited result set, preserves ranking
+    correctness for every allowed paper.
+    """
+    if paper_ids is None:
+        return ""
+    conn.execute("CREATE TEMP TABLE allowed_paper_ids (paper_id TEXT PRIMARY KEY) WITHOUT ROWID")
+    conn.executemany(
+        "INSERT INTO allowed_paper_ids (paper_id) VALUES (?)",
+        ((paper_id,) for paper_id in paper_ids),
+    )
+    return " AND EXISTS (SELECT 1 FROM allowed_paper_ids WHERE allowed_paper_ids.paper_id = papers.paper_id)"
 
 
 def lookup_paper(db_path: Path, user_input: str) -> dict | None:
@@ -895,13 +908,18 @@ def unified_search(
         ``title``, ``authors``, ``year``, ``journal``, ``score``,
         ``match``（``"fts"`` / ``"vec"`` / ``"both"``）。
         当 ``return_diagnostics=True`` 时，返回 ``(results, diagnostics)``
-        二元组，其中 ``diagnostics["vector_degraded"]`` 表示是否因为
-        向量检索不可用或运行失败而降级到仅使用 FTS 结果。
+        二元组。诊断分别记录关键词和向量检索是否降级及其错误摘要，
+        调用方可以明确区分纯 FTS、纯向量和两路都不可用的状态。
     """
     if top_k is None:
         top_k = cfg.search.top_k if cfg is not None else 20
 
-    diagnostics: UnifiedSearchDiagnostics = {"vector_degraded": False}
+    diagnostics: UnifiedSearchDiagnostics = {
+        "keyword_degraded": False,
+        "vector_degraded": False,
+        "keyword_error": "",
+        "vector_error": "",
+    }
 
     # -- FTS5 leg --
     fts_results: list[dict] = []
@@ -916,8 +934,9 @@ def unified_search(
             paper_type=paper_type,
             paper_ids=paper_ids,
         )
-    except FileNotFoundError:
-        pass
+    except (FileNotFoundError, sqlite3.Error) as exc:
+        diagnostics["keyword_degraded"] = True
+        diagnostics["keyword_error"] = str(exc)
 
     # -- Vector leg (graceful degradation) --
     vec_results: list[dict] = []
@@ -934,14 +953,14 @@ def unified_search(
             paper_type=paper_type,
             paper_ids=paper_ids,
         )
-    except (FileNotFoundError, ImportError):
+    except (FileNotFoundError, ImportError) as exc:
         diagnostics["vector_degraded"] = True
-        pass
-    except Exception:
+        diagnostics["vector_error"] = str(exc)
+    except Exception as exc:
         # Runtime vector initialization can fail in restricted/offline
         # environments; unified search must still return FTS results.
         diagnostics["vector_degraded"] = True
-        pass
+        diagnostics["vector_error"] = str(exc)
 
     # -- Merge via Reciprocal Rank Fusion (RRF) --
     # RRF score = sum of 1/(k + rank) across retrieval legs.

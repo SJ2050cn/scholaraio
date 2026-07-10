@@ -1150,8 +1150,9 @@ def vsearch(
     q_vec = _embed_query_vector(query, cfg)
     index, faiss_ids = _build_faiss_index(db_path)
 
-    # Fetch more candidates when post-filtering is needed
-    fetch_k = top_k * 5 if (year or journal or paper_type or paper_ids) else top_k
+    # Post-filters must see every ranked candidate; a fixed over-fetch window
+    # can silently miss the only qualifying paper below that window.
+    fetch_k = index.ntotal if (year or journal or paper_type or paper_ids is not None) else top_k
     fetch_k = min(fetch_k, index.ntotal)
     scores, indices = index.search(q_vec, fetch_k)
 

@@ -87,6 +87,48 @@ class TestBuildAndSearch:
             ).fetchall()
         assert [row[0] for row in rows] == ["10.1000/classic", "10.1000/second"]
 
+    def test_search_applies_paper_ids_before_limit(self, tmp_path, tmp_db):
+        papers_dir = tmp_path / "papers"
+        papers_dir.mkdir()
+        for index in range(6):
+            paper_dir = papers_dir / f"A-{index:02d}-Decoy"
+            paper_dir.mkdir()
+            (paper_dir / "meta.json").write_text(
+                json.dumps(
+                    {
+                        "id": f"decoy-{index}",
+                        "title": "Needle needle needle needle",
+                        "authors": ["Decoy Author"],
+                        "year": 2026,
+                        "abstract": "needle " * 20,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        target_dir = papers_dir / "Z-Target"
+        target_dir.mkdir()
+        (target_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "id": "target-paper",
+                    "title": "A distant result",
+                    "authors": ["Target Author"],
+                    "year": 2026,
+                    "abstract": "This record mentions needle once.",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        build_index(papers_dir, tmp_db)
+        unfiltered = search("needle", tmp_db, top_k=7)
+        assert unfiltered[-1]["paper_id"] == "target-paper"
+
+        results = search("needle", tmp_db, top_k=1, paper_ids={"target-paper"})
+
+        assert [result["paper_id"] for result in results] == ["target-paper"]
+
     def test_unified_search_degrades_to_fts_when_vector_search_runtime_fails(self, tmp_papers, tmp_db, monkeypatch):
         build_index(tmp_papers, tmp_db)
 
@@ -112,7 +154,56 @@ class TestBuildAndSearch:
 
         assert len(results) >= 1
         assert all(r["match"] == "fts" for r in results)
-        assert diagnostics == {"vector_degraded": True}
+        assert diagnostics["keyword_degraded"] is False
+        assert diagnostics["vector_degraded"] is True
+        assert diagnostics["keyword_error"] == ""
+        assert "proxy unavailable" in diagnostics["vector_error"]
+
+    def test_unified_search_diagnostics_report_keyword_degradation(self, tmp_db, monkeypatch):
+        def missing_keyword(*_args, **_kwargs):
+            raise FileNotFoundError("keyword index missing")
+
+        monkeypatch.setattr("scholaraio.services.index.search", missing_keyword)
+        monkeypatch.setattr(
+            "scholaraio.services.vectors.vsearch",
+            lambda *_args, **_kwargs: [
+                {
+                    "paper_id": "vector-paper",
+                    "title": "Vector result",
+                    "authors": "A. Researcher",
+                    "year": "2026",
+                    "journal": "",
+                    "score": 0.9,
+                }
+            ],
+        )
+
+        results, diagnostics = unified_search("vector", tmp_db, return_diagnostics=True)
+
+        assert [result["paper_id"] for result in results] == ["vector-paper"]
+        assert results[0]["match"] == "vec"
+        assert diagnostics["keyword_degraded"] is True
+        assert diagnostics["vector_degraded"] is False
+        assert "keyword index missing" in diagnostics["keyword_error"]
+        assert diagnostics["vector_error"] == ""
+
+    def test_unified_search_diagnostics_report_both_legs_unavailable(self, tmp_db, monkeypatch):
+        def missing_keyword(*_args, **_kwargs):
+            raise FileNotFoundError("keyword index missing")
+
+        def missing_vector(*_args, **_kwargs):
+            raise FileNotFoundError("vector index missing")
+
+        monkeypatch.setattr("scholaraio.services.index.search", missing_keyword)
+        monkeypatch.setattr("scholaraio.services.vectors.vsearch", missing_vector)
+
+        results, diagnostics = unified_search("missing", tmp_db, return_diagnostics=True)
+
+        assert results == []
+        assert diagnostics["keyword_degraded"] is True
+        assert diagnostics["vector_degraded"] is True
+        assert "keyword index missing" in diagnostics["keyword_error"]
+        assert "vector index missing" in diagnostics["vector_error"]
 
 
 class TestLookupPaper:
