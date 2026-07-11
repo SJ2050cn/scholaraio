@@ -17,6 +17,12 @@ const state = {
     csrfToken: "",
     nativePdfOpen: false,
     nativePdfReason: "Checking local capabilities…",
+    pdfDelivery: {
+      mode: "download",
+      target: "client",
+      label: "Download PDF",
+      reason: "Checking local capabilities…",
+    },
   },
   pdf: null,
   pdfFullscreen: false,
@@ -32,8 +38,6 @@ const state = {
     doi: "",
     type: "",
     volume: "",
-    issues: false,
-    missingMd: false,
   },
   pollTimer: null,
 };
@@ -46,8 +50,6 @@ const els = {
   sourceRoot: document.getElementById("source-root"),
   sourceCopyButton: document.getElementById("source-copy-button"),
   metricTotal: document.getElementById("metric-total"),
-  metricErrors: document.getElementById("metric-errors"),
-  metricWarnings: document.getElementById("metric-warnings"),
   tableCount: document.getElementById("table-count"),
   recordsToolbarTitle: document.getElementById("records-toolbar-title"),
   tablePanel: document.getElementById("table-panel"),
@@ -75,8 +77,6 @@ const els = {
   typeFilter: document.getElementById("type-filter"),
   volumeFilter: document.getElementById("volume-filter"),
   volumeFilterLabel: document.getElementById("volume-filter-label"),
-  filterIssues: document.getElementById("filter-issues"),
-  filterMissingMd: document.getElementById("filter-missing-md"),
   refreshButton: document.getElementById("refresh-button"),
   detailTitle: document.getElementById("detail-title"),
   detailActions: document.getElementById("detail-actions"),
@@ -116,16 +116,30 @@ async function fetchJson(url, options = {}) {
 async function loadCapabilities() {
   try {
     const payload = await fetchJson("/api/capabilities");
+    const nativePdfOpen = Boolean(payload?.native_pdf_open?.enabled);
+    const nativePdfReason = String(payload?.native_pdf_open?.reason || "");
+    const advertisedDelivery = payload?.pdf_delivery;
+    const deliveryMode = advertisedDelivery?.mode === "native" && nativePdfOpen ? "native" : "download";
     state.capabilities = {
       csrfToken: String(payload?.csrf_token || ""),
-      nativePdfOpen: Boolean(payload?.native_pdf_open?.enabled),
-      nativePdfReason: String(payload?.native_pdf_open?.reason || ""),
+      nativePdfOpen,
+      nativePdfReason,
+      pdfDelivery: {
+        mode: deliveryMode,
+        target: String(advertisedDelivery?.target || (deliveryMode === "native" ? "host" : "client")),
+        label: String(
+          advertisedDelivery?.label || (deliveryMode === "native" ? "Open in default viewer" : "Download PDF"),
+        ),
+        reason: String(advertisedDelivery?.reason || nativePdfReason),
+      },
     };
   } catch (_err) {
+    const reason = "Native PDF launch capability could not be verified.";
     state.capabilities = {
       csrfToken: "",
       nativePdfOpen: false,
-      nativePdfReason: "Native PDF launch capability could not be verified.",
+      nativePdfReason: reason,
+      pdfDelivery: { mode: "download", target: "client", label: "Download PDF", reason },
     };
   }
   if (state.detail) renderDetailActions(state.detail);
@@ -176,8 +190,6 @@ function rowMatches(row) {
   if (state.filters.yearTo && (!Number.isFinite(year) || year > yearTo)) return false;
   if (state.filters.type && row.paper_type !== state.filters.type) return false;
   if (state.filters.volume && row.proceeding_title !== state.filters.volume) return false;
-  if (state.filters.issues && issueTotal(row) === 0) return false;
-  if (state.filters.missingMd && row.has_md) return false;
   return true;
 }
 
@@ -219,8 +231,6 @@ function syncFiltersFromControls() {
   state.filters.doi = els.doiFilter.value.trim();
   state.filters.type = els.typeFilter.value;
   state.filters.volume = els.volumeFilter.value;
-  state.filters.issues = els.filterIssues.checked;
-  state.filters.missingMd = els.filterMissingMd.checked;
 }
 
 function activeFilterTotal() {
@@ -234,8 +244,6 @@ function activeFilterTotal() {
     state.filters.doi,
     state.filters.type,
     state.filters.volume,
-    state.filters.issues,
-    state.filters.missingMd,
   ].filter(Boolean).length;
 }
 
@@ -325,9 +333,6 @@ function renderMetrics() {
   els.sourceCopyButton.disabled = !root;
   if (els.sourceCopyButton.textContent !== "Copied") els.sourceCopyButton.textContent = "Copy";
   els.metricTotal.textContent = String(payload?.total ?? "--");
-  const totals = payload?.issue_totals || {};
-  els.metricErrors.textContent = String(totals.error ?? 0);
-  els.metricWarnings.textContent = String(totals.warning ?? 0);
   els.updatedAt.textContent = formatDate(payload?.generated_at);
 }
 
@@ -456,8 +461,6 @@ function clearAllFilters() {
     doi: "",
     type: "",
     volume: "",
-    issues: false,
-    missingMd: false,
   });
   for (const input of [
     els.searchInput,
@@ -472,8 +475,6 @@ function clearAllFilters() {
   ]) {
     input.value = "";
   }
-  els.filterIssues.checked = false;
-  els.filterMissingMd.checked = false;
   updateSearchModeUi();
   renderActiveFilterCount();
   renderTableAndReconcileSelection();
@@ -650,13 +651,24 @@ function renderDetailActions(detail) {
   els.copyBibtexButton.textContent = state.actionBusy.bibtex ? "Copying…" : "Copy BibTeX";
   els.previewPdfButton.disabled = !hasPdf;
   els.previewPdfButton.title = hasPdf ? "Preview this PDF inside ScholarAIO" : "No local PDF is available";
-  const nativeEnabled = hasPdf && state.capabilities.nativePdfOpen;
-  els.nativePdfButton.disabled = !nativeEnabled || state.actionBusy.nativePdf;
+  const delivery = state.capabilities.pdfDelivery || {};
+  const deliveryMode = delivery.mode === "native" && state.capabilities.nativePdfOpen ? "native" : "download";
+  const deliveryLabel = deliveryMode === "native" ? "Open in default viewer" : "Download PDF";
+  els.nativePdfButton.disabled = !hasPdf || state.actionBusy.nativePdf;
   els.nativePdfButton.setAttribute?.("aria-busy", state.actionBusy.nativePdf ? "true" : "false");
-  els.nativePdfButton.textContent = state.actionBusy.nativePdf ? "Opening…" : "Open in default viewer";
+  els.nativePdfButton.textContent = state.actionBusy.nativePdf
+    ? deliveryMode === "native"
+      ? "Opening…"
+      : "Downloading…"
+    : String(delivery.label || deliveryLabel);
   if (!hasPdf) els.nativePdfButton.title = "No local PDF is available";
-  else if (!state.capabilities.nativePdfOpen) {
-    els.nativePdfButton.title = state.capabilities.nativePdfReason || "Native PDF launch is unavailable";
+  else if (deliveryMode === "download") {
+    const reason = String(delivery.reason || state.capabilities.nativePdfReason || "");
+    els.nativePdfButton.title = reason
+      ? `Download this PDF to your browser. ${reason}`
+      : "Download this PDF to your browser";
+  } else if (delivery.target === "windows") {
+    els.nativePdfButton.title = "Open this PDF with the Windows default viewer";
   } else els.nativePdfButton.title = "Open this PDF with the operating system's default viewer";
 }
 
@@ -755,9 +767,48 @@ function previewSelectedPdf() {
   openPdf(state.detail);
 }
 
-async function openSelectedPdfNative() {
+function pdfDownloadUrl(pdfUrl) {
+  const value = String(pdfUrl || "");
+  if (!value) return "";
+  if (/([?&])download=[^&#]*/.test(value)) {
+    return value.replace(/([?&])download=[^&#]*/, "$1download=1");
+  }
+  const hashIndex = value.indexOf("#");
+  const base = hashIndex >= 0 ? value.slice(0, hashIndex) : value;
+  const hash = hashIndex >= 0 ? value.slice(hashIndex) : "";
+  return `${base}${base.includes("?") ? "&" : "?"}download=1${hash}`;
+}
+
+function downloadPdf(detail) {
+  const href = pdfDownloadUrl(detail?.pdf_url);
+  if (!href) return false;
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = "";
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+  }
+  return true;
+}
+
+async function deliverSelectedPdf() {
   const detail = state.detail;
-  if (!detail?.paper_id || !detail.has_pdf || !state.capabilities.nativePdfOpen || state.actionBusy.nativePdf) {
+  if (!detail?.paper_id || !detail.has_pdf || !detail.pdf_url || state.actionBusy.nativePdf) {
+    return;
+  }
+  const deliveryMode =
+    state.capabilities.pdfDelivery?.mode === "native" && state.capabilities.nativePdfOpen ? "native" : "download";
+  if (deliveryMode === "download") {
+    setRecordActionBusy("nativePdf", true);
+    try {
+      if (downloadPdf(detail)) showToast("PDF download started.");
+    } finally {
+      setRecordActionBusy("nativePdf", false);
+    }
     return;
   }
   const source = state.tab === "main" ? "main" : "proceedings";
@@ -773,7 +824,11 @@ async function openSelectedPdfNative() {
     });
     showToast("PDF opened in the default viewer.");
   } catch (err) {
-    showToast(`Could not open the default viewer: ${String(err)}`, "error");
+    if (downloadPdf(detail)) {
+      showToast(`The default viewer could not be opened, so the PDF was downloaded instead: ${String(err)}`, "warning");
+    } else {
+      showToast(`Could not open the default viewer: ${String(err)}`, "error");
+    }
   } finally {
     setRecordActionBusy("nativePdf", false);
   }
@@ -949,18 +1004,10 @@ function bindEvents() {
     syncFiltersFromControls();
     markRankedSearchDirty();
   });
-  els.filterIssues.addEventListener("change", () => {
-    syncFiltersFromControls();
-    markRankedSearchDirty();
-  });
-  els.filterMissingMd.addEventListener("change", () => {
-    syncFiltersFromControls();
-    markRankedSearchDirty();
-  });
   els.sourceCopyButton.addEventListener("click", copySourceRoot);
   els.copyBibtexButton.addEventListener("click", copySelectedBibtex);
   els.previewPdfButton.addEventListener("click", previewSelectedPdf);
-  els.nativePdfButton.addEventListener("click", openSelectedPdfNative);
+  els.nativePdfButton.addEventListener("click", deliverSelectedPdf);
   els.refreshButton.addEventListener("click", () => refreshActive({ keepSelection: true }));
   els.pdfBackButton.addEventListener("click", showRecords);
   els.pdfFullscreenButton.addEventListener("click", () => setPdfFullscreen(!state.pdfFullscreen));

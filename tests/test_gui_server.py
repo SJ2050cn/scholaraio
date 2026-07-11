@@ -23,7 +23,10 @@ from scholaraio.core.config import _build_config
 def _running_library_server(cfg, *, host="127.0.0.1"):
     from scholaraio.interfaces.cli.gui import create_library_view_server
 
-    server = create_library_view_server(cfg, host=host, port=0)
+    # Native-open route tests need a deterministic desktop-capable host even on
+    # headless CI runners. System capability detection is covered separately.
+    with patch.dict("os.environ", {"DISPLAY": ":pytest"}):
+        server = create_library_view_server(cfg, host=host, port=0)
     bound_host, port = server.server_address[:2]
     connect_host = "127.0.0.1" if bound_host in {"0.0.0.0", "::"} else bound_host
     if ":" in connect_host and not connect_host.startswith("["):
@@ -165,6 +168,7 @@ function element(id) {
     dispatch(name, event = {}) { return listeners.get(name)?.(event); },
     focus() { document.activeElement = this; },
     select() { document.__selectedText = this.value; },
+    click() { document.__clickedHref = this.href || ""; },
   };
   let content = "";
   Object.defineProperty(el, "textContent", {
@@ -184,6 +188,7 @@ document = {
   body: element("body"),
   activeElement: null,
   __selectedText: "",
+  __clickedHref: "",
   __execCopy: true,
   getElementById(id) {
     if (!elements.has(id)) elements.set(id, element(id));
@@ -349,6 +354,36 @@ def test_library_view_shell_uses_compact_records_and_pdf_controls(tmp_path):
         server.server_close()
 
 
+def test_library_view_shell_omits_audit_chrome_and_keeps_pdf_actions_single_line(tmp_path):
+    from scholaraio.interfaces.cli.gui import _static_dir, create_library_view_server
+
+    cfg = _build_config({}, tmp_path)
+    server = create_library_view_server(cfg, host="127.0.0.1", port=0)
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://{host}:{port}/", timeout=3) as response:
+            html = response.read().decode("utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    for removed_text in ("Has audit issues", "Missing Markdown", ">Errors<", ">Warnings<"):
+        assert removed_text not in html
+    for removed_id in ("filter-issues", "filter-missing-md", "metric-errors", "metric-warnings"):
+        assert f'id="{removed_id}"' not in html
+    for removed_kicker in ("Source", "Discover", "Records", "Inspector"):
+        assert f'<div class="monitor-kicker">{removed_kicker}</div>' not in html
+
+    css = (_static_dir() / "workflows.css").read_text(encoding="utf-8")
+    detail_actions = css.split(".detail-actions {", 1)[1].split("}", 1)[0]
+    action_button = css.rsplit(".action-button {", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns:" in detail_actions
+    assert "minmax(" in detail_actions
+    assert "white-space: nowrap" in action_button
+
+
 def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path):
     cfg = _build_config({}, tmp_path)
 
@@ -410,8 +445,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     doi: "10.1000/tar",
     type: "journal-article",
     volume: "",
-    issues: true,
-    missingMd: true,
   });
   const allMatch = rowMatches(state.rows.main[0]);
   state.filters.yearFrom = "2025";
@@ -454,8 +487,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     ["doi-filter", "10.1000"],
     ["type-filter", "journal-article"],
   ]) elements.get(id).value = value;
-  elements.get("filter-issues").checked = true;
-  elements.get("filter-missing-md").checked = true;
   clearAllFilters();
 
   return {
@@ -478,7 +509,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
       elements.get("doi-filter").value,
       elements.get("type-filter").value,
     ],
-    checks: [elements.get("filter-issues").checked, elements.get("filter-missing-md").checked],
   };
 """
     )
@@ -493,7 +523,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     assert payload["sortKey"] == "year"
     assert payload["sortDir"] == "desc"
     assert payload["controlValues"] == ["", "", "", "", "", "", "", ""]
-    assert payload["checks"] == [False, False]
 
 
 def test_library_view_app_ranked_search_orders_results_and_ignores_stale_responses() -> None:
@@ -627,6 +656,7 @@ def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> 
     csrfToken: "csrf-token",
     nativePdfOpen: true,
     nativePdfReason: "",
+    pdfDelivery: { mode: "native", target: "windows", label: "Open in default viewer", reason: "" },
   };
   const detail = {
     paper_id: "action-paper",
@@ -644,7 +674,7 @@ def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> 
   await copySelectedBibtex();
   const copiedText = document.__selectedText;
   const copyFeedback = els.toast.textContent;
-  await openSelectedPdfNative();
+  await deliverSelectedPdf();
   const nativeFeedback = els.toast.textContent;
   const nativeRequest = __requests.find((request) => request.url.includes("/open-pdf"));
 
@@ -652,7 +682,14 @@ def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> 
   const noPdfDisabled = [els.previewPdfButton.disabled, els.nativePdfButton.disabled];
   state.capabilities.nativePdfOpen = false;
   state.capabilities.nativePdfReason = "Loopback only";
+  state.capabilities.pdfDelivery = {
+    mode: "download",
+    target: "client",
+    label: "Download PDF",
+    reason: "Loopback only",
+  };
   renderDetail(detail);
+  await deliverSelectedPdf();
 
   return {
     copiedText,
@@ -662,6 +699,8 @@ def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> 
     noPdfDisabled,
     nativeDisabled: els.nativePdfButton.disabled,
     nativeTitle: els.nativePdfButton.title,
+    nativeLabel: els.nativePdfButton.textContent,
+    downloadedHref: document.__clickedHref,
     temporaryNodes: document.body.children.length,
     copyButtonBusy: els.copyBibtexButton.disabled,
   };
@@ -699,10 +738,67 @@ context.fetch = async (url, options = {}) => {
     assert request["options"]["headers"]["X-ScholarAIO-CSRF"] == "csrf-token"
     assert json.loads(request["options"]["body"]) == {"id": "action-paper"}
     assert payload["noPdfDisabled"] == [True, True]
-    assert payload["nativeDisabled"] is True
-    assert payload["nativeTitle"] == "Loopback only"
+    assert payload["nativeDisabled"] is False
+    assert "Loopback only" in payload["nativeTitle"]
+    assert payload["nativeLabel"] == "Download PDF"
+    assert payload["downloadedHref"] == "/api/main/pdf?id=action-paper&download=1"
     assert payload["temporaryNodes"] == 0
     assert payload["copyButtonBusy"] is False
+
+
+def test_library_view_app_falls_back_to_client_download_when_native_open_fails() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.capabilities = {
+    csrfToken: "csrf-token",
+    nativePdfOpen: true,
+    nativePdfReason: "",
+    pdfDelivery: { mode: "native", target: "windows", label: "Open in default viewer", reason: "" },
+  };
+  const detail = {
+    paper_id: "fallback-paper",
+    title: "Fallback paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=fallback-paper",
+    issues: [],
+    toc: [],
+  };
+  state.detail = detail;
+  renderDetail(detail);
+  await deliverSelectedPdf();
+  return {
+    downloadedHref: document.__clickedHref,
+    message: els.toast.textContent,
+    kind: els.toast.dataset.kind,
+    busy: els.nativePdfButton.disabled,
+    temporaryNodes: document.body.children.length,
+  };
+""",
+        fetch_setup=r"""
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => ({
+      csrf_token: "csrf-token",
+      native_pdf_open: { enabled: true, reason: "" },
+      pdf_delivery: { mode: "native", target: "windows", label: "Open in default viewer", reason: "" },
+    }) };
+  }
+  if (target.includes("/open-pdf")) {
+    return { ok: false, status: 500, statusText: "Failed", json: async () => ({ error: "Viewer failed" }) };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload["downloadedHref"] == "/api/main/pdf?id=fallback-paper&download=1"
+    assert "downloaded" in payload["message"].lower()
+    assert payload["kind"] == "warning"
+    assert payload["busy"] is False
+    assert payload["temporaryNodes"] == 0
 
 
 def test_library_view_app_reports_clipboard_fallback_failure_without_leaking_textarea() -> None:
@@ -1594,25 +1690,66 @@ console.log(JSON.stringify(context.__result));
 
 
 def test_library_view_capabilities_are_per_server_and_loopback_aware(tmp_path):
+    from scholaraio.services.system_open import DefaultApplicationOpenCapability
+
     cfg = _build_config({}, tmp_path)
 
-    with _running_library_server(cfg) as (_server, base_url):
-        payload, _headers = _json_response(f"{base_url}/api/capabilities")
-    with _running_library_server(cfg) as (_server, second_base_url):
-        second, _headers = _json_response(f"{second_base_url}/api/capabilities")
+    with patch(
+        "scholaraio.services.system_open.default_application_open_capability",
+        return_value=DefaultApplicationOpenCapability(True, "windows"),
+    ):
+        with _running_library_server(cfg) as (_server, base_url):
+            payload, _headers = _json_response(f"{base_url}/api/capabilities")
+        with _running_library_server(cfg) as (_server, second_base_url):
+            second, _headers = _json_response(f"{second_base_url}/api/capabilities")
+        with _running_library_server(cfg, host="0.0.0.0") as (_server, wildcard_base_url):
+            wildcard, _headers = _json_response(f"{wildcard_base_url}/api/capabilities")
 
     assert payload["csrf_token"]
     assert payload["csrf_token"] != second["csrf_token"]
     assert payload["native_pdf_open"] == {"enabled": True, "reason": ""}
+    assert payload["pdf_delivery"] == {
+        "mode": "native",
+        "target": "windows",
+        "label": "Open in default viewer",
+        "reason": "",
+    }
     assert payload["search_modes"] == {
         "main": ["metadata", "keyword", "semantic", "unified"],
         "proceedings": ["metadata"],
     }
 
-    with _running_library_server(cfg, host="0.0.0.0") as (_server, wildcard_base_url):
-        wildcard, _headers = _json_response(f"{wildcard_base_url}/api/capabilities")
     assert wildcard["native_pdf_open"]["enabled"] is False
     assert "loopback" in wildcard["native_pdf_open"]["reason"].lower()
+    assert wildcard["pdf_delivery"] == {
+        "mode": "download",
+        "target": "client",
+        "label": "Download PDF",
+        "reason": wildcard["native_pdf_open"]["reason"],
+    }
+
+
+def test_library_view_capabilities_download_when_host_launcher_is_unavailable(tmp_path):
+    from scholaraio.services.system_open import DefaultApplicationOpenCapability
+
+    cfg = _build_config({}, tmp_path)
+    reason = "Required desktop launcher `xdg-open` was not found"
+    with (
+        patch(
+            "scholaraio.services.system_open.default_application_open_capability",
+            return_value=DefaultApplicationOpenCapability(False, None, reason),
+        ),
+        _running_library_server(cfg) as (_server, base_url),
+    ):
+        payload, _headers = _json_response(f"{base_url}/api/capabilities")
+
+    assert payload["native_pdf_open"] == {"enabled": False, "reason": reason}
+    assert payload["pdf_delivery"] == {
+        "mode": "download",
+        "target": "client",
+        "label": "Download PDF",
+        "reason": reason,
+    }
 
 
 def test_library_view_bibtex_endpoints_use_canonical_metadata(tmp_path):
@@ -2053,6 +2190,37 @@ def test_library_view_server_serves_main_pdf_inline(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_library_view_server_downloads_main_pdf_as_attachment(tmp_path):
+    from scholaraio.interfaces.cli.gui import create_library_view_server
+
+    cfg = _build_config({}, tmp_path)
+    paper_dir = tmp_path / "data" / "libraries" / "papers" / "Doe-2026-Download"
+    paper_dir.mkdir(parents=True)
+    (paper_dir / "meta.json").write_text(
+        json.dumps({"id": "download-paper", "title": "Download paper", "authors": ["Jane Doe"], "year": 2026}),
+        encoding="utf-8",
+    )
+    (paper_dir / "Doe-2026-Download.pdf").write_bytes(b"%PDF-download")
+
+    server = create_library_view_server(cfg, host="127.0.0.1", port=0)
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://{host}:{port}/api/main/pdf?id=download-paper&download=1", timeout=3) as response:
+            body = response.read()
+            headers = response.headers
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert body == b"%PDF-download"
+    assert headers["Content-Type"] == "application/pdf"
+    assert headers["Content-Disposition"].startswith("attachment;")
+    assert "Doe-2026-Download.pdf" in headers["Content-Disposition"]
+    assert headers["X-Frame-Options"] == "SAMEORIGIN"
 
 
 def test_library_view_inline_pdf_security_headers_allow_same_origin_frame(tmp_path):
