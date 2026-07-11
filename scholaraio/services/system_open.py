@@ -17,9 +17,7 @@ _WSL_TEMP_MAX_AGE_SECONDS = 24 * 60 * 60
 _POWERSHELL_TEMP_COMMAND = (
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); [System.IO.Path]::GetTempPath()"
 )
-_POWERSHELL_OPEN_COMMAND = (
-    "$ErrorActionPreference = 'Stop'; $path = [Console]::In.ReadToEnd(); Start-Process -FilePath $path"
-)
+_POWERSHELL_OPEN_COMMAND = "$ErrorActionPreference = 'Stop'; Start-Process -FilePath $env:SCHOLARAIO_PDF_PATH"
 
 
 class DefaultApplicationOpenError(RuntimeError):
@@ -108,6 +106,12 @@ def _open_wsl_pdf(path: Path, powershell: str, wslpath: str) -> None:
     copied_pdf = managed_temp / _safe_temp_pdf_name(path)
     shutil.copyfile(path, copied_pdf)
     windows_pdf = _run_text([wslpath, "-w", str(copied_pdf)])
+    child_env = os.environ.copy()
+    forwarded = [entry for entry in child_env.get("WSLENV", "").split(":") if entry]
+    if not any(entry.split("/", 1)[0] == "SCHOLARAIO_PDF_PATH" for entry in forwarded):
+        forwarded.append("SCHOLARAIO_PDF_PATH")
+    child_env["WSLENV"] = ":".join(forwarded)
+    child_env["SCHOLARAIO_PDF_PATH"] = windows_pdf
     subprocess.run(
         [
             powershell,
@@ -119,7 +123,7 @@ def _open_wsl_pdf(path: Path, powershell: str, wslpath: str) -> None:
         ],
         check=True,
         capture_output=True,
-        input=windows_pdf,
+        env=child_env,
         text=True,
         timeout=10,
     )
