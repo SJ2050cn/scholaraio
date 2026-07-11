@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -14,10 +15,17 @@ def _pdf(tmp_path: Path) -> Path:
     return path
 
 
+def _set_platform(monkeypatch, name: str, *, release: str = "generic") -> None:
+    monkeypatch.setattr(system_open.platform, "system", lambda: name)
+    monkeypatch.setattr(system_open.platform, "release", lambda: release)
+    monkeypatch.delenv("WSL_DISTRO_NAME", raising=False)
+    monkeypatch.delenv("WSL_INTEROP", raising=False)
+
+
 def test_open_with_default_application_uses_windows_startfile(tmp_path, monkeypatch):
     pdf = _pdf(tmp_path)
     opened: list[str] = []
-    monkeypatch.setattr(system_open.platform, "system", lambda: "Windows")
+    _set_platform(monkeypatch, "Windows")
     monkeypatch.setattr(system_open.os, "startfile", lambda path: opened.append(path), raising=False)
     monkeypatch.setattr(
         system_open.subprocess,
@@ -42,7 +50,7 @@ def test_open_with_default_application_uses_detached_shell_free_process(
 ):
     pdf = _pdf(tmp_path)
     calls: list[tuple[list[str], dict]] = []
-    monkeypatch.setattr(system_open.platform, "system", lambda: platform_name)
+    _set_platform(monkeypatch, platform_name)
     monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(
         system_open.subprocess,
@@ -78,7 +86,7 @@ def test_open_with_default_application_rejects_non_files(tmp_path, kind):
 
 def test_open_with_default_application_reports_missing_launcher(tmp_path, monkeypatch):
     pdf = _pdf(tmp_path)
-    monkeypatch.setattr(system_open.platform, "system", lambda: "Linux")
+    _set_platform(monkeypatch, "Linux")
     monkeypatch.setattr(system_open.shutil, "which", lambda _name: None)
 
     with pytest.raises(system_open.DefaultApplicationOpenError, match="xdg-open"):
@@ -88,7 +96,7 @@ def test_open_with_default_application_reports_missing_launcher(tmp_path, monkey
 @pytest.mark.parametrize("platform_name", ["Windows", "Darwin", "Linux"])
 def test_open_with_default_application_wraps_os_launch_failures(tmp_path, monkeypatch, platform_name):
     pdf = _pdf(tmp_path)
-    monkeypatch.setattr(system_open.platform, "system", lambda: platform_name)
+    _set_platform(monkeypatch, platform_name)
 
     def fail(*_args, **_kwargs):
         raise OSError("desktop session unavailable")
@@ -103,3 +111,103 @@ def test_open_with_default_application_wraps_os_launch_failures(tmp_path, monkey
         system_open.open_with_default_application(pdf)
 
     assert "desktop session unavailable" in str(exc.value)
+
+
+def test_default_application_capability_detects_wsl_windows_bridge(monkeypatch):
+    _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/1_interop")
+    launchers = {
+        "powershell.exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        "wslpath": "/usr/bin/wslpath",
+    }
+    monkeypatch.setattr(system_open.shutil, "which", launchers.get)
+
+    capability = system_open.default_application_open_capability()
+
+    assert capability.enabled is True
+    assert capability.target == "windows"
+    assert capability.reason == ""
+
+
+def test_default_application_capability_explains_missing_wsl_bridge(monkeypatch):
+    _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
+    monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+    monkeypatch.setattr(system_open.shutil, "which", lambda name: None if name == "powershell.exe" else f"/{name}")
+
+    capability = system_open.default_application_open_capability()
+
+    assert capability.enabled is False
+    assert capability.target is None
+    assert "powershell.exe" in capability.reason
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "launcher"),
+    [("Windows", None), ("Darwin", "open"), ("Linux", "xdg-open")],
+)
+def test_default_application_capability_detects_native_desktop(monkeypatch, platform_name, launcher):
+    _set_platform(monkeypatch, platform_name)
+    monkeypatch.setattr(system_open.os, "startfile", lambda _path: None, raising=False)
+    monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}" if name == launcher else None)
+
+    capability = system_open.default_application_open_capability()
+
+    assert capability.enabled is True
+    assert capability.target == "host"
+
+
+def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans_stale_files(
+    tmp_path,
+    monkeypatch,
+):
+    pdf = _pdf(tmp_path)
+    windows_temp = tmp_path / "windows-temp"
+    managed_temp = windows_temp / "ScholarAIO"
+    managed_temp.mkdir(parents=True)
+    stale = managed_temp / "stale.pdf"
+    stale.write_bytes(b"old")
+    os.utime(stale, (0, 0))
+    _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/1_interop")
+    launchers = {
+        "powershell.exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        "wslpath": "/usr/bin/wslpath",
+    }
+    monkeypatch.setattr(system_open.shutil, "which", launchers.get)
+    monkeypatch.setattr(system_open.secrets, "token_hex", lambda _size: "abc123")
+    run_calls: list[list[str]] = []
+
+    def fake_run(args, **_kwargs):
+        run_calls.append(args)
+        if args[0] == launchers["powershell.exe"]:
+            return subprocess.CompletedProcess(args, 0, stdout="C:\\Users\\Test\\AppData\\Local\\Temp\r\n")
+        if args[1] == "-u":
+            return subprocess.CompletedProcess(args, 0, stdout=f"{windows_temp}\n")
+        copied = next(managed_temp.glob("abc123-*.pdf"))
+        return subprocess.CompletedProcess(args, 0, stdout=f"C:\\Temp\\ScholarAIO\\{copied.name}\r\n")
+
+    popen_calls: list[tuple[list[str], dict]] = []
+    monkeypatch.setattr(system_open.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        system_open.subprocess,
+        "Popen",
+        lambda args, **kwargs: popen_calls.append((args, kwargs)),
+    )
+
+    system_open.open_with_default_application(pdf)
+
+    copied = next(managed_temp.glob("abc123-*.pdf"))
+    assert copied.read_bytes() == pdf.read_bytes()
+    assert stale.exists() is False
+    assert [call[1] for call in run_calls[1:]] == ["-u", "-w"]
+    args, kwargs = popen_calls[0]
+    assert args[:5] == [
+        launchers["powershell.exe"],
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+    ]
+    assert args[5] == "Start-Process -LiteralPath $env:SCHOLARAIO_PDF_PATH"
+    assert str(pdf) not in " ".join(args)
+    assert kwargs["env"]["SCHOLARAIO_PDF_PATH"] == f"C:\\Temp\\ScholarAIO\\{copied.name}"
