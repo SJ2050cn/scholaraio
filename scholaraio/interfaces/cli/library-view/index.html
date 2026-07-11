@@ -31,7 +31,6 @@
       <aside class="filter-panel">
         <section class="monitor-card">
           <div class="monitor-card-header">
-            <div class="monitor-kicker">Source</div>
             <div class="monitor-title" id="source-title">Main Papers</div>
             <div class="source-root-row">
               <div class="monitor-subtitle" id="source-root">--</div>
@@ -43,21 +42,12 @@
               <span class="metric-label">Records</span>
               <span class="metric-value" id="metric-total">--</span>
             </div>
-            <div class="metric-row">
-              <span class="metric-label">Errors</span>
-              <span class="metric-value severe" id="metric-errors">--</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-label">Warnings</span>
-              <span class="metric-value warn" id="metric-warnings">--</span>
-            </div>
           </div>
         </section>
 
         <section class="monitor-card filter-card" aria-labelledby="search-heading">
           <div class="filter-heading-row">
             <div>
-              <div class="monitor-kicker">Discover</div>
               <div class="monitor-title filter-title" id="search-heading">Search &amp; filter</div>
             </div>
             <button class="soft-button compact-button" id="clear-filters-button" type="button">Clear all</button>
@@ -115,14 +105,6 @@
             <option value="">All volumes</option>
           </select>
 
-          <label class="check-row">
-            <input id="filter-issues" type="checkbox">
-            <span>Has audit issues</span>
-          </label>
-          <label class="check-row">
-            <input id="filter-missing-md" type="checkbox">
-            <span>Missing Markdown</span>
-          </label>
           <div class="active-filter-count" id="active-filter-count">No active filters</div>
         </section>
       </aside>
@@ -130,7 +112,6 @@
       <section class="table-panel" id="table-panel">
         <div class="table-toolbar">
           <div id="records-toolbar-title">
-            <div class="monitor-kicker">Records</div>
             <div class="table-count" id="table-count">--</div>
           </div>
           <div class="pdf-toolbar-title" id="pdf-toolbar-title" hidden>
@@ -166,7 +147,6 @@
       <aside class="detail-panel">
         <section class="monitor-card detail-card">
           <div class="monitor-card-header">
-            <div class="monitor-kicker">Inspector</div>
             <div class="monitor-title" id="detail-title">Select a record</div>
           </div>
 

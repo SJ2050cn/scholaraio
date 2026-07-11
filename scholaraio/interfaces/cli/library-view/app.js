@@ -32,8 +32,6 @@ const state = {
     doi: "",
     type: "",
     volume: "",
-    issues: false,
-    missingMd: false,
   },
   pollTimer: null,
 };
@@ -46,8 +44,6 @@ const els = {
   sourceRoot: document.getElementById("source-root"),
   sourceCopyButton: document.getElementById("source-copy-button"),
   metricTotal: document.getElementById("metric-total"),
-  metricErrors: document.getElementById("metric-errors"),
-  metricWarnings: document.getElementById("metric-warnings"),
   tableCount: document.getElementById("table-count"),
   recordsToolbarTitle: document.getElementById("records-toolbar-title"),
   tablePanel: document.getElementById("table-panel"),
@@ -75,8 +71,6 @@ const els = {
   typeFilter: document.getElementById("type-filter"),
   volumeFilter: document.getElementById("volume-filter"),
   volumeFilterLabel: document.getElementById("volume-filter-label"),
-  filterIssues: document.getElementById("filter-issues"),
-  filterMissingMd: document.getElementById("filter-missing-md"),
   refreshButton: document.getElementById("refresh-button"),
   detailTitle: document.getElementById("detail-title"),
   detailActions: document.getElementById("detail-actions"),
@@ -176,8 +170,6 @@ function rowMatches(row) {
   if (state.filters.yearTo && (!Number.isFinite(year) || year > yearTo)) return false;
   if (state.filters.type && row.paper_type !== state.filters.type) return false;
   if (state.filters.volume && row.proceeding_title !== state.filters.volume) return false;
-  if (state.filters.issues && issueTotal(row) === 0) return false;
-  if (state.filters.missingMd && row.has_md) return false;
   return true;
 }
 
@@ -219,8 +211,6 @@ function syncFiltersFromControls() {
   state.filters.doi = els.doiFilter.value.trim();
   state.filters.type = els.typeFilter.value;
   state.filters.volume = els.volumeFilter.value;
-  state.filters.issues = els.filterIssues.checked;
-  state.filters.missingMd = els.filterMissingMd.checked;
 }
 
 function activeFilterTotal() {
@@ -234,8 +224,6 @@ function activeFilterTotal() {
     state.filters.doi,
     state.filters.type,
     state.filters.volume,
-    state.filters.issues,
-    state.filters.missingMd,
   ].filter(Boolean).length;
 }
 
@@ -325,9 +313,6 @@ function renderMetrics() {
   els.sourceCopyButton.disabled = !root;
   if (els.sourceCopyButton.textContent !== "Copied") els.sourceCopyButton.textContent = "Copy";
   els.metricTotal.textContent = String(payload?.total ?? "--");
-  const totals = payload?.issue_totals || {};
-  els.metricErrors.textContent = String(totals.error ?? 0);
-  els.metricWarnings.textContent = String(totals.warning ?? 0);
   els.updatedAt.textContent = formatDate(payload?.generated_at);
 }
 
@@ -456,8 +441,6 @@ function clearAllFilters() {
     doi: "",
     type: "",
     volume: "",
-    issues: false,
-    missingMd: false,
   });
   for (const input of [
     els.searchInput,
@@ -472,8 +455,6 @@ function clearAllFilters() {
   ]) {
     input.value = "";
   }
-  els.filterIssues.checked = false;
-  els.filterMissingMd.checked = false;
   updateSearchModeUi();
   renderActiveFilterCount();
   renderTableAndReconcileSelection();
@@ -946,14 +927,6 @@ function bindEvents() {
     markRankedSearchDirty();
   });
   els.volumeFilter.addEventListener("change", () => {
-    syncFiltersFromControls();
-    markRankedSearchDirty();
-  });
-  els.filterIssues.addEventListener("change", () => {
-    syncFiltersFromControls();
-    markRankedSearchDirty();
-  });
-  els.filterMissingMd.addEventListener("change", () => {
     syncFiltersFromControls();
     markRankedSearchDirty();
   });

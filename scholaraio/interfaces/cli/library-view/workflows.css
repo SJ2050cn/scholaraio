@@ -119,7 +119,7 @@ summary:focus-visible {
 
 .detail-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(96px, 0.8fr) minmax(168px, 1.4fr);
   gap: 7px;
 }
 
@@ -127,6 +127,7 @@ summary:focus-visible {
   min-height: 34px;
   padding: 7px 10px;
   line-height: 1.25;
+  white-space: nowrap;
 }
 
 .action-button-primary {
@@ -177,13 +178,8 @@ summary:focus-visible {
 
 @media (max-width: 520px) {
   .search-query-row,
-  .year-filter-grid,
-  .detail-actions {
+  .year-filter-grid {
     grid-template-columns: 1fr;
-  }
-
-  .action-button-primary {
-    grid-column: auto;
   }
 
   .toast {

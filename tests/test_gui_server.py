@@ -349,6 +349,36 @@ def test_library_view_shell_uses_compact_records_and_pdf_controls(tmp_path):
         server.server_close()
 
 
+def test_library_view_shell_omits_audit_chrome_and_keeps_pdf_actions_single_line(tmp_path):
+    from scholaraio.interfaces.cli.gui import _static_dir, create_library_view_server
+
+    cfg = _build_config({}, tmp_path)
+    server = create_library_view_server(cfg, host="127.0.0.1", port=0)
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://{host}:{port}/", timeout=3) as response:
+            html = response.read().decode("utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    for removed_text in ("Has audit issues", "Missing Markdown", ">Errors<", ">Warnings<"):
+        assert removed_text not in html
+    for removed_id in ("filter-issues", "filter-missing-md", "metric-errors", "metric-warnings"):
+        assert f'id="{removed_id}"' not in html
+    for removed_kicker in ("Source", "Discover", "Records", "Inspector"):
+        assert f'<div class="monitor-kicker">{removed_kicker}</div>' not in html
+
+    css = (_static_dir() / "workflows.css").read_text(encoding="utf-8")
+    detail_actions = css.split(".detail-actions {", 1)[1].split("}", 1)[0]
+    action_button = css.rsplit(".action-button {", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns:" in detail_actions
+    assert "minmax(" in detail_actions
+    assert "white-space: nowrap" in action_button
+
+
 def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path):
     cfg = _build_config({}, tmp_path)
 
@@ -410,8 +440,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     doi: "10.1000/tar",
     type: "journal-article",
     volume: "",
-    issues: true,
-    missingMd: true,
   });
   const allMatch = rowMatches(state.rows.main[0]);
   state.filters.yearFrom = "2025";
@@ -454,8 +482,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     ["doi-filter", "10.1000"],
     ["type-filter", "journal-article"],
   ]) elements.get(id).value = value;
-  elements.get("filter-issues").checked = true;
-  elements.get("filter-missing-md").checked = true;
   clearAllFilters();
 
   return {
@@ -478,7 +504,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
       elements.get("doi-filter").value,
       elements.get("type-filter").value,
     ],
-    checks: [elements.get("filter-issues").checked, elements.get("filter-missing-md").checked],
   };
 """
     )
@@ -493,7 +518,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     assert payload["sortKey"] == "year"
     assert payload["sortDir"] == "desc"
     assert payload["controlValues"] == ["", "", "", "", "", "", "", ""]
-    assert payload["checks"] == [False, False]
 
 
 def test_library_view_app_ranked_search_orders_results_and_ignores_stale_responses() -> None:
