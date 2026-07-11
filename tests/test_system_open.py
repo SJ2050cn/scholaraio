@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -161,6 +162,7 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
     monkeypatch,
 ):
     pdf = _pdf(tmp_path)
+    os.utime(pdf, (0, 0))
     windows_temp = tmp_path / "windows-temp"
     managed_temp = windows_temp / "ScholarAIO"
     managed_temp.mkdir(parents=True)
@@ -198,6 +200,7 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
 
     copied = next(managed_temp.glob("abc123-*.pdf"))
     assert copied.read_bytes() == pdf.read_bytes()
+    assert copied.stat().st_mtime > time.time() - 5
     assert stale.exists() is False
     assert [call[1] for call in run_calls[1:]] == ["-u", "-w"]
     args, kwargs = popen_calls[0]

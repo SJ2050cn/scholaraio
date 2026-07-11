@@ -104,7 +104,7 @@ def _open_wsl_pdf(path: Path, powershell: str, wslpath: str) -> None:
     managed_temp.mkdir(parents=True, exist_ok=True)
     _cleanup_stale_wsl_pdfs(managed_temp)
     copied_pdf = managed_temp / _safe_temp_pdf_name(path)
-    shutil.copy2(path, copied_pdf)
+    shutil.copyfile(path, copied_pdf)
     windows_pdf = _run_text([wslpath, "-w", str(copied_pdf)])
     child_env = os.environ.copy()
     child_env["SCHOLARAIO_PDF_PATH"] = windows_pdf
