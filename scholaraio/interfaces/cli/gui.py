@@ -51,7 +51,7 @@ def _json_bytes(payload: object) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def _pdf_content_disposition(filename: str) -> str:
+def _pdf_content_disposition(filename: str, *, attachment: bool = False) -> str:
     safe_name = filename.replace("\\", "_").replace('"', "_").replace("\r", "_").replace("\n", "_").strip()
     if not safe_name:
         safe_name = "paper.pdf"
@@ -63,7 +63,8 @@ def _pdf_content_disposition(filename: str) -> str:
         fallback.replace("\\", "_").replace('"', "_").replace("\r", "_").replace("\n", "_").strip() or "paper.pdf"
     )
     encoded = quote(safe_name, safe="")
-    return f"inline; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
+    disposition = "attachment" if attachment else "inline"
+    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
 
 
 def _browser_url(host: str, port: int) -> str:
@@ -92,6 +93,8 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
     static_dir: Path
     csrf_token: str
     native_pdf_open_enabled: bool
+    native_pdf_open_reason: str
+    pdf_delivery: dict[str, str]
 
     server_version = "ScholarAIOLibraryGUI/2.0"
 
@@ -240,7 +243,7 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
             return None
         return payload
 
-    def _send_pdf(self, pdf_path: Path) -> None:
+    def _send_pdf(self, pdf_path: Path, *, attachment: bool = False) -> None:
         try:
             size = pdf_path.stat().st_size
             stream = pdf_path.open("rb")
@@ -255,7 +258,10 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/pdf")
         self.send_header("Content-Length", str(size))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Disposition", _pdf_content_disposition(pdf_path.name))
+        self.send_header(
+            "Content-Disposition",
+            _pdf_content_disposition(pdf_path.name, attachment=attachment),
+        )
         self._send_security_headers(allow_same_origin_frame=True)
         self.end_headers()
         if self.command == "HEAD":
@@ -303,10 +309,9 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                         "csrf_token": self.csrf_token,
                         "native_pdf_open": {
                             "enabled": self.native_pdf_open_enabled,
-                            "reason": ""
-                            if self.native_pdf_open_enabled
-                            else "Native PDF launch is available only when the GUI binds to a loopback host.",
+                            "reason": self.native_pdf_open_reason,
                         },
+                        "pdf_delivery": self.pdf_delivery,
                         "search_modes": {
                             "main": ["metadata", "keyword", "semantic", "unified"],
                             "proceedings": ["metadata"],
@@ -363,7 +368,10 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 paper_id = self._required_query_id()
                 if paper_id is None:
                     return
-                self._send_pdf(get_main_paper_pdf(self.cfg, paper_id))
+                self._send_pdf(
+                    get_main_paper_pdf(self.cfg, paper_id),
+                    attachment=self._query_value("download") == "1",
+                )
                 return
             if path == "/api/proceedings/papers":
                 self._send_json(HTTPStatus.OK, build_proceedings_library_view(self.cfg))
@@ -387,7 +395,10 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 paper_id = self._required_query_id()
                 if paper_id is None:
                     return
-                self._send_pdf(get_proceedings_paper_pdf(self.cfg, paper_id))
+                self._send_pdf(
+                    get_proceedings_paper_pdf(self.cfg, paper_id),
+                    attachment=self._query_value("download") == "1",
+                )
                 return
         except LibrarySearchRequestError as exc:
             self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc), code=exc.code)
@@ -466,7 +477,7 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         if not self.native_pdf_open_enabled:
             self._send_error_json(
                 HTTPStatus.FORBIDDEN,
-                "Native PDF launch is disabled for non-loopback GUI bindings",
+                self.native_pdf_open_reason or "Native PDF launch is unavailable",
                 code="native_open_disabled",
             )
             return
@@ -558,6 +569,8 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
 def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
     """Create the local, library-read-only HTTP server."""
 
+    from scholaraio.services.system_open import default_application_open_capability
+
     static_dir = _static_dir()
 
     class ConfiguredHandler(LibraryViewRequestHandler):
@@ -566,7 +579,30 @@ def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: in
     ConfiguredHandler.cfg = cfg
     ConfiguredHandler.static_dir = static_dir
     ConfiguredHandler.csrf_token = secrets.token_urlsafe(32)
-    ConfiguredHandler.native_pdf_open_enabled = _is_loopback_host(host)
+    host_is_loopback = _is_loopback_host(host)
+    host_capability = default_application_open_capability()
+    ConfiguredHandler.native_pdf_open_enabled = host_is_loopback and host_capability.enabled
+    if not host_is_loopback:
+        reason = "Native PDF launch is available only when the GUI binds to a loopback host."
+    elif not host_capability.enabled:
+        reason = host_capability.reason
+    else:
+        reason = ""
+    ConfiguredHandler.native_pdf_open_reason = reason
+    if ConfiguredHandler.native_pdf_open_enabled:
+        ConfiguredHandler.pdf_delivery = {
+            "mode": "native",
+            "target": host_capability.target or "host",
+            "label": "Open in default viewer",
+            "reason": "",
+        }
+    else:
+        ConfiguredHandler.pdf_delivery = {
+            "mode": "download",
+            "target": "client",
+            "label": "Download PDF",
+            "reason": reason,
+        }
     return ThreadingHTTPServer((host, int(port)), ConfiguredHandler)
 
 

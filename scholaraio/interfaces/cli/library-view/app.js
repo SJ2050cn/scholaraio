@@ -17,6 +17,12 @@ const state = {
     csrfToken: "",
     nativePdfOpen: false,
     nativePdfReason: "Checking local capabilities…",
+    pdfDelivery: {
+      mode: "download",
+      target: "client",
+      label: "Download PDF",
+      reason: "Checking local capabilities…",
+    },
   },
   pdf: null,
   pdfFullscreen: false,
@@ -110,16 +116,30 @@ async function fetchJson(url, options = {}) {
 async function loadCapabilities() {
   try {
     const payload = await fetchJson("/api/capabilities");
+    const nativePdfOpen = Boolean(payload?.native_pdf_open?.enabled);
+    const nativePdfReason = String(payload?.native_pdf_open?.reason || "");
+    const advertisedDelivery = payload?.pdf_delivery;
+    const deliveryMode = advertisedDelivery?.mode === "native" && nativePdfOpen ? "native" : "download";
     state.capabilities = {
       csrfToken: String(payload?.csrf_token || ""),
-      nativePdfOpen: Boolean(payload?.native_pdf_open?.enabled),
-      nativePdfReason: String(payload?.native_pdf_open?.reason || ""),
+      nativePdfOpen,
+      nativePdfReason,
+      pdfDelivery: {
+        mode: deliveryMode,
+        target: String(advertisedDelivery?.target || (deliveryMode === "native" ? "host" : "client")),
+        label: String(
+          advertisedDelivery?.label || (deliveryMode === "native" ? "Open in default viewer" : "Download PDF"),
+        ),
+        reason: String(advertisedDelivery?.reason || nativePdfReason),
+      },
     };
   } catch (_err) {
+    const reason = "Native PDF launch capability could not be verified.";
     state.capabilities = {
       csrfToken: "",
       nativePdfOpen: false,
-      nativePdfReason: "Native PDF launch capability could not be verified.",
+      nativePdfReason: reason,
+      pdfDelivery: { mode: "download", target: "client", label: "Download PDF", reason },
     };
   }
   if (state.detail) renderDetailActions(state.detail);
@@ -631,13 +651,24 @@ function renderDetailActions(detail) {
   els.copyBibtexButton.textContent = state.actionBusy.bibtex ? "Copying…" : "Copy BibTeX";
   els.previewPdfButton.disabled = !hasPdf;
   els.previewPdfButton.title = hasPdf ? "Preview this PDF inside ScholarAIO" : "No local PDF is available";
-  const nativeEnabled = hasPdf && state.capabilities.nativePdfOpen;
-  els.nativePdfButton.disabled = !nativeEnabled || state.actionBusy.nativePdf;
+  const delivery = state.capabilities.pdfDelivery || {};
+  const deliveryMode = delivery.mode === "native" && state.capabilities.nativePdfOpen ? "native" : "download";
+  const deliveryLabel = deliveryMode === "native" ? "Open in default viewer" : "Download PDF";
+  els.nativePdfButton.disabled = !hasPdf || state.actionBusy.nativePdf;
   els.nativePdfButton.setAttribute?.("aria-busy", state.actionBusy.nativePdf ? "true" : "false");
-  els.nativePdfButton.textContent = state.actionBusy.nativePdf ? "Opening…" : "Open in default viewer";
+  els.nativePdfButton.textContent = state.actionBusy.nativePdf
+    ? deliveryMode === "native"
+      ? "Opening…"
+      : "Downloading…"
+    : String(delivery.label || deliveryLabel);
   if (!hasPdf) els.nativePdfButton.title = "No local PDF is available";
-  else if (!state.capabilities.nativePdfOpen) {
-    els.nativePdfButton.title = state.capabilities.nativePdfReason || "Native PDF launch is unavailable";
+  else if (deliveryMode === "download") {
+    const reason = String(delivery.reason || state.capabilities.nativePdfReason || "");
+    els.nativePdfButton.title = reason
+      ? `Download this PDF to your browser. ${reason}`
+      : "Download this PDF to your browser";
+  } else if (delivery.target === "windows") {
+    els.nativePdfButton.title = "Open this PDF with the Windows default viewer";
   } else els.nativePdfButton.title = "Open this PDF with the operating system's default viewer";
 }
 
@@ -736,9 +767,48 @@ function previewSelectedPdf() {
   openPdf(state.detail);
 }
 
+function pdfDownloadUrl(pdfUrl) {
+  const value = String(pdfUrl || "");
+  if (!value) return "";
+  if (/([?&])download=[^&#]*/.test(value)) {
+    return value.replace(/([?&])download=[^&#]*/, "$1download=1");
+  }
+  const hashIndex = value.indexOf("#");
+  const base = hashIndex >= 0 ? value.slice(0, hashIndex) : value;
+  const hash = hashIndex >= 0 ? value.slice(hashIndex) : "";
+  return `${base}${base.includes("?") ? "&" : "?"}download=1${hash}`;
+}
+
+function downloadPdf(detail) {
+  const href = pdfDownloadUrl(detail?.pdf_url);
+  if (!href) return false;
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = "";
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+  }
+  return true;
+}
+
 async function openSelectedPdfNative() {
   const detail = state.detail;
-  if (!detail?.paper_id || !detail.has_pdf || !state.capabilities.nativePdfOpen || state.actionBusy.nativePdf) {
+  if (!detail?.paper_id || !detail.has_pdf || !detail.pdf_url || state.actionBusy.nativePdf) {
+    return;
+  }
+  const deliveryMode =
+    state.capabilities.pdfDelivery?.mode === "native" && state.capabilities.nativePdfOpen ? "native" : "download";
+  if (deliveryMode === "download") {
+    setRecordActionBusy("nativePdf", true);
+    try {
+      if (downloadPdf(detail)) showToast("PDF download started.");
+    } finally {
+      setRecordActionBusy("nativePdf", false);
+    }
     return;
   }
   const source = state.tab === "main" ? "main" : "proceedings";
@@ -754,7 +824,11 @@ async function openSelectedPdfNative() {
     });
     showToast("PDF opened in the default viewer.");
   } catch (err) {
-    showToast(`Could not open the default viewer: ${String(err)}`, "error");
+    if (downloadPdf(detail)) {
+      showToast(`The default viewer could not be opened, so the PDF was downloaded instead: ${String(err)}`, "warning");
+    } else {
+      showToast(`Could not open the default viewer: ${String(err)}`, "error");
+    }
   } finally {
     setRecordActionBusy("nativePdf", false);
   }

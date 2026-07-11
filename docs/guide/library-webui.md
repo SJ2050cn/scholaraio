@@ -58,9 +58,7 @@ Filters combine with AND semantics. You can compose:
 - journal or proceedings source;
 - DOI;
 - paper type;
-- proceedings volume;
-- records with audit issues; and
-- records missing Markdown.
+- proceedings volume.
 
 **Clear all** removes every filter, cancels stale ranked responses, returns to Metadata mode, and restores the default year-descending sort. The status at the bottom of the filter card reports the active-filter count.
 
@@ -80,7 +78,11 @@ Choose **Preview PDF** or the table's **PDF** pill to keep reading inside the We
 
 ### Open a PDF in the default viewer
 
-Choose **Open in default viewer** to launch the same canonical PDF in the operating system's configured PDF application. This supports opening several papers in independent native windows while keeping the WebUI available for searching.
+When ScholarAIO can reach a desktop safely, choose **Open in default viewer** to launch the same canonical PDF in the operating system's configured PDF application. This supports opening several papers in independent native windows while keeping the WebUI available for searching.
+
+On WSL, ScholarAIO copies the PDF to a managed `ScholarAIO` folder under the Windows temporary directory and asks Windows to open that copy. The Windows default association is respected, including applications such as Foxit Reader. Temporary copies older than 24 hours are cleaned up opportunistically. The canonical library PDF is never modified.
+
+When the WebUI is bound to a non-loopback host, or the server has no compatible desktop launcher, the action automatically becomes **Download PDF**. The browser receives an attachment and opens or saves it on the client machine according to its own settings. This is the correct behavior for a WebUI hosted on another computer: a server cannot directly launch an application on the browser's computer.
 
 The action is intentionally restricted:
 
@@ -90,7 +92,7 @@ The action is intentionally restricted:
 - the request body contains a stable paper ID, never a filesystem path; and
 - ScholarAIO resolves that ID through the configured library before launching an application.
 
-The button is disabled with an explanation when the GUI is exposed through a non-loopback `--host` value or when the selected record has no PDF. The library remains metadata-read-only; opening a local application does not edit a record.
+If an advertised native launch fails at runtime, the WebUI automatically starts the browser download and reports the fallback. The action is disabled only when the selected record has no PDF. The library remains metadata-read-only; opening or downloading a PDF does not edit a record.
 
 ## Live refresh and ranked results
 
@@ -103,8 +105,9 @@ The record list continues to refresh from the library. Expensive semantic or uni
 | `Keyword search index is unavailable` | Run `scholaraio index --rebuild`. |
 | `Semantic search index or embedding provider is unavailable` | Configure an embedding provider if needed, then run `scholaraio embed`. |
 | Unified search is `degraded` | Results are still valid for the available retrieval leg; follow the displayed rebuild command to restore both legs. |
-| **Open in default viewer** is disabled | Use a loopback `--host` and confirm the selected record has a local PDF. |
-| Native viewer launch fails on Linux | Install/configure `xdg-open` and a default PDF application in the desktop session. |
+| The action says **Download PDF** | This is expected for remote/non-loopback deployments or hosts without a desktop launcher; the file is delivered to the browser computer. |
+| Native viewer launch fails on WSL | Confirm Windows interoperability provides `powershell.exe` and `wslpath`, and that Windows has a default PDF application. The WebUI falls back to a browser download if launch still fails. |
+| Native viewer launch fails on Linux | Install/configure `xdg-open` and a default PDF application in the desktop session. The WebUI falls back to a browser download if launch still fails. |
 | BibTeX copy fails | Allow clipboard access or use a browser that supports the local textarea copy fallback. |
 | No rows remain after filtering | Choose **Clear all**, then add filters one at a time. |
 
