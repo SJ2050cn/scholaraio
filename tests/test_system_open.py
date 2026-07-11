@@ -207,8 +207,10 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
         "-NonInteractive",
         "-Command",
     ]
-    assert args[5] == "Start-Process -FilePath $env:SCHOLARAIO_PDF_PATH"
+    assert args[5] == (
+        "$ErrorActionPreference = 'Stop'; $path = [Console]::In.ReadToEnd(); Start-Process -FilePath $path"
+    )
     assert str(pdf) not in " ".join(args)
-    assert kwargs["env"]["SCHOLARAIO_PDF_PATH"] == f"C:\\Temp\\ScholarAIO\\{copied.name}"
+    assert kwargs["input"] == f"C:\\Temp\\ScholarAIO\\{copied.name}"
     assert kwargs["check"] is True
     assert kwargs["timeout"] == 10
