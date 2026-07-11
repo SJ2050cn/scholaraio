@@ -23,7 +23,10 @@ from scholaraio.core.config import _build_config
 def _running_library_server(cfg, *, host="127.0.0.1"):
     from scholaraio.interfaces.cli.gui import create_library_view_server
 
-    server = create_library_view_server(cfg, host=host, port=0)
+    # Native-open route tests need a deterministic desktop-capable host even on
+    # headless CI runners. System capability detection is covered separately.
+    with patch.dict("os.environ", {"DISPLAY": ":pytest"}):
+        server = create_library_view_server(cfg, host=host, port=0)
     bound_host, port = server.server_address[:2]
     connect_host = "127.0.0.1" if bound_host in {"0.0.0.0", "::"} else bound_host
     if ":" in connect_host and not connect_host.startswith("["):
