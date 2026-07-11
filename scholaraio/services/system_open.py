@@ -62,6 +62,12 @@ def default_application_open_capability() -> DefaultApplicationOpenCapability:
     command = "open" if system == "Darwin" else "xdg-open"
     if shutil.which(command) is None:
         return DefaultApplicationOpenCapability(False, None, f"Required desktop launcher `{command}` was not found")
+    if system == "Linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return DefaultApplicationOpenCapability(
+            False,
+            None,
+            "No Linux desktop session is available for native PDF launch",
+        )
     return DefaultApplicationOpenCapability(True, "host")
 
 
@@ -160,13 +166,15 @@ def open_with_default_application(path: Path) -> None:
         executable = shutil.which(command)
         if executable is None:
             raise DefaultApplicationOpenError(f"Required desktop launcher `{command}` was not found")
-        subprocess.Popen(
+        subprocess.run(
             [executable, str(resolved)],
+            check=True,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
             close_fds=True,
+            timeout=10,
         )
     except DefaultApplicationOpenError:
         raise

@@ -43,7 +43,7 @@ def test_open_with_default_application_uses_windows_startfile(tmp_path, monkeypa
     ("platform_name", "executable"),
     [("Darwin", "open"), ("Linux", "xdg-open")],
 )
-def test_open_with_default_application_uses_detached_shell_free_process(
+def test_open_with_default_application_uses_checked_shell_free_process(
     tmp_path,
     monkeypatch,
     platform_name,
@@ -52,10 +52,12 @@ def test_open_with_default_application_uses_detached_shell_free_process(
     pdf = _pdf(tmp_path)
     calls: list[tuple[list[str], dict]] = []
     _set_platform(monkeypatch, platform_name)
+    if platform_name == "Linux":
+        monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(
         system_open.subprocess,
-        "Popen",
+        "run",
         lambda args, **kwargs: calls.append((args, kwargs)),
     )
 
@@ -65,11 +67,13 @@ def test_open_with_default_application_uses_detached_shell_free_process(
         (
             [f"/usr/bin/{executable}", str(pdf.resolve())],
             {
+                "check": True,
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.DEVNULL,
                 "stderr": subprocess.DEVNULL,
                 "start_new_session": True,
                 "close_fds": True,
+                "timeout": 10,
             },
         )
     ]
@@ -105,8 +109,10 @@ def test_open_with_default_application_wraps_os_launch_failures(tmp_path, monkey
     if platform_name == "Windows":
         monkeypatch.setattr(system_open.os, "startfile", fail, raising=False)
     else:
+        if platform_name == "Linux":
+            monkeypatch.setenv("DISPLAY", ":0")
         monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}")
-        monkeypatch.setattr(system_open.subprocess, "Popen", fail)
+        monkeypatch.setattr(system_open.subprocess, "run", fail)
 
     with pytest.raises(system_open.DefaultApplicationOpenError, match="default application") as exc:
         system_open.open_with_default_application(pdf)
@@ -142,12 +148,43 @@ def test_default_application_capability_explains_missing_wsl_bridge(monkeypatch)
     assert "powershell.exe" in capability.reason
 
 
+def test_default_application_capability_rejects_headless_linux(monkeypatch):
+    _set_platform(monkeypatch, "Linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    capability = system_open.default_application_open_capability()
+
+    assert capability.enabled is False
+    assert capability.target is None
+    assert "desktop session" in capability.reason.lower()
+
+
+def test_open_with_default_application_reports_immediate_linux_launcher_failure(tmp_path, monkeypatch):
+    pdf = _pdf(tmp_path)
+    _set_platform(monkeypatch, "Linux")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(system_open.subprocess, "Popen", lambda *_args, **_kwargs: None)
+
+    def fail(args, **_kwargs):
+        raise subprocess.CalledProcessError(3, args, stderr="no opener")
+
+    monkeypatch.setattr(system_open.subprocess, "run", fail)
+
+    with pytest.raises(system_open.DefaultApplicationOpenError, match="default application"):
+        system_open.open_with_default_application(pdf)
+
+
 @pytest.mark.parametrize(
     ("platform_name", "launcher"),
     [("Windows", None), ("Darwin", "open"), ("Linux", "xdg-open")],
 )
 def test_default_application_capability_detects_native_desktop(monkeypatch, platform_name, launcher):
     _set_platform(monkeypatch, platform_name)
+    if platform_name == "Linux":
+        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
     monkeypatch.setattr(system_open.os, "startfile", lambda _path: None, raising=False)
     monkeypatch.setattr(system_open.shutil, "which", lambda name: f"/usr/bin/{name}" if name == launcher else None)
 
