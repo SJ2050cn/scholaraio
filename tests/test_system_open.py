@@ -139,6 +139,7 @@ def test_default_application_capability_detects_wsl_windows_bridge(monkeypatch):
 def test_default_application_capability_explains_missing_wsl_bridge(monkeypatch):
     _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
     monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+    monkeypatch.setattr(system_open, "_WSL_POWERSHELL_CANDIDATES", ())
     monkeypatch.setattr(system_open.shutil, "which", lambda name: None if name == "powershell.exe" else f"/{name}")
 
     capability = system_open.default_application_open_capability()
@@ -208,11 +209,15 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
     os.utime(stale, (0, 0))
     _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
     monkeypatch.setenv("WSL_INTEROP", "/run/WSL/1_interop")
+    fallback_powershell = tmp_path / "Windows" / "System32" / "powershell.exe"
+    fallback_powershell.parent.mkdir(parents=True)
+    fallback_powershell.write_bytes(b"MZ")
+    monkeypatch.setattr(system_open, "_WSL_POWERSHELL_CANDIDATES", (fallback_powershell,))
     launchers = {
-        "powershell.exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        "powershell.exe": str(fallback_powershell),
         "wslpath": "/usr/bin/wslpath",
     }
-    monkeypatch.setattr(system_open.shutil, "which", launchers.get)
+    monkeypatch.setattr(system_open.shutil, "which", lambda name: launchers.get(name) if name == "wslpath" else None)
     monkeypatch.setattr(system_open.secrets, "token_hex", lambda _size: "abc123")
     run_calls: list[list[str]] = []
     run_kwargs: list[dict] = []

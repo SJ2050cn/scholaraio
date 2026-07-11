@@ -14,6 +14,10 @@ from pathlib import Path
 
 _WSL_TEMP_SUBDIR = "ScholarAIO"
 _WSL_TEMP_MAX_AGE_SECONDS = 24 * 60 * 60
+_WSL_POWERSHELL_CANDIDATES = (
+    Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"),
+    Path("/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe"),
+)
 _POWERSHELL_TEMP_COMMAND = (
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); [System.IO.Path]::GetTempPath()"
 )
@@ -41,6 +45,16 @@ def _is_wsl() -> bool:
     return "microsoft" in platform.release().casefold()
 
 
+def _find_wsl_launcher(name: str) -> str | None:
+    discovered = shutil.which(name)
+    if discovered is not None or name != "powershell.exe":
+        return discovered
+    for candidate in _WSL_POWERSHELL_CANDIDATES:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def default_application_open_capability() -> DefaultApplicationOpenCapability:
     """Return the native-launch capability without starting an application."""
     system = platform.system()
@@ -50,7 +64,7 @@ def default_application_open_capability() -> DefaultApplicationOpenCapability:
         return DefaultApplicationOpenCapability(True, "host")
 
     if _is_wsl():
-        missing = [name for name in ("powershell.exe", "wslpath") if shutil.which(name) is None]
+        missing = [name for name in ("powershell.exe", "wslpath") if _find_wsl_launcher(name) is None]
         if missing:
             return DefaultApplicationOpenCapability(
                 False,
@@ -155,8 +169,8 @@ def open_with_default_application(path: Path) -> None:
             return
 
         if _is_wsl():
-            powershell = shutil.which("powershell.exe")
-            wslpath = shutil.which("wslpath")
+            powershell = _find_wsl_launcher("powershell.exe")
+            wslpath = _find_wsl_launcher("wslpath")
             if powershell is None or wslpath is None:
                 raise DefaultApplicationOpenError(capability.reason)
             _open_wsl_pdf(resolved, powershell, wslpath)
