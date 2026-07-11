@@ -178,9 +178,11 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
     monkeypatch.setattr(system_open.shutil, "which", launchers.get)
     monkeypatch.setattr(system_open.secrets, "token_hex", lambda _size: "abc123")
     run_calls: list[list[str]] = []
+    run_kwargs: list[dict] = []
 
-    def fake_run(args, **_kwargs):
+    def fake_run(args, **kwargs):
         run_calls.append(args)
+        run_kwargs.append(kwargs)
         if args[0] == launchers["powershell.exe"]:
             return subprocess.CompletedProcess(args, 0, stdout="C:\\Users\\Test\\AppData\\Local\\Temp\r\n")
         if args[1] == "-u":
@@ -188,13 +190,7 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
         copied = next(managed_temp.glob("abc123-*.pdf"))
         return subprocess.CompletedProcess(args, 0, stdout=f"C:\\Temp\\ScholarAIO\\{copied.name}\r\n")
 
-    popen_calls: list[tuple[list[str], dict]] = []
     monkeypatch.setattr(system_open.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        system_open.subprocess,
-        "Popen",
-        lambda args, **kwargs: popen_calls.append((args, kwargs)),
-    )
 
     system_open.open_with_default_application(pdf)
 
@@ -202,8 +198,8 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
     assert copied.read_bytes() == pdf.read_bytes()
     assert copied.stat().st_mtime > time.time() - 5
     assert stale.exists() is False
-    assert [call[1] for call in run_calls[1:]] == ["-u", "-w"]
-    args, kwargs = popen_calls[0]
+    assert [call[1] for call in run_calls[1:3]] == ["-u", "-w"]
+    args, kwargs = run_calls[-1], run_kwargs[-1]
     assert args[:5] == [
         launchers["powershell.exe"],
         "-NoLogo",
@@ -211,6 +207,8 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
         "-NonInteractive",
         "-Command",
     ]
-    assert args[5] == "Start-Process -LiteralPath $env:SCHOLARAIO_PDF_PATH"
+    assert args[5] == "Start-Process -FilePath $env:SCHOLARAIO_PDF_PATH"
     assert str(pdf) not in " ".join(args)
     assert kwargs["env"]["SCHOLARAIO_PDF_PATH"] == f"C:\\Temp\\ScholarAIO\\{copied.name}"
+    assert kwargs["check"] is True
+    assert kwargs["timeout"] == 10
