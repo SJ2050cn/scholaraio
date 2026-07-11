@@ -671,7 +671,7 @@ def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> 
   await copySelectedBibtex();
   const copiedText = document.__selectedText;
   const copyFeedback = els.toast.textContent;
-  await openSelectedPdfNative();
+  await deliverSelectedPdf();
   const nativeFeedback = els.toast.textContent;
   const nativeRequest = __requests.find((request) => request.url.includes("/open-pdf"));
 
@@ -686,7 +686,7 @@ def test_library_view_app_copies_bibtex_with_fallback_and_opens_native_pdf() -> 
     reason: "Loopback only",
   };
   renderDetail(detail);
-  await openSelectedPdfNative();
+  await deliverSelectedPdf();
 
   return {
     copiedText,
@@ -763,7 +763,7 @@ def test_library_view_app_falls_back_to_client_download_when_native_open_fails()
   };
   state.detail = detail;
   renderDetail(detail);
-  await openSelectedPdfNative();
+  await deliverSelectedPdf();
   return {
     downloadedHref: document.__clickedHref,
     message: els.toast.textContent,

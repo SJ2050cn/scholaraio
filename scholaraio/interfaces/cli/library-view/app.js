@@ -795,7 +795,7 @@ function downloadPdf(detail) {
   return true;
 }
 
-async function openSelectedPdfNative() {
+async function deliverSelectedPdf() {
   const detail = state.detail;
   if (!detail?.paper_id || !detail.has_pdf || !detail.pdf_url || state.actionBusy.nativePdf) {
     return;
@@ -1007,7 +1007,7 @@ function bindEvents() {
   els.sourceCopyButton.addEventListener("click", copySourceRoot);
   els.copyBibtexButton.addEventListener("click", copySelectedBibtex);
   els.previewPdfButton.addEventListener("click", previewSelectedPdf);
-  els.nativePdfButton.addEventListener("click", openSelectedPdfNative);
+  els.nativePdfButton.addEventListener("click", deliverSelectedPdf);
   els.refreshButton.addEventListener("click", () => refreshActive({ keepSelection: true }));
   els.pdfBackButton.addEventListener("click", showRecords);
   els.pdfFullscreenButton.addEventListener("click", () => setPdfFullscreen(!state.pdfFullscreen));
