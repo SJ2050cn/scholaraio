@@ -21,6 +21,10 @@ _WSL_POWERSHELL_CANDIDATES = (
 _POWERSHELL_TEMP_COMMAND = (
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); [System.IO.Path]::GetTempPath()"
 )
+_POWERSHELL_LOCAL_APP_DATA_COMMAND = (
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+    "[Environment]::GetFolderPath('LocalApplicationData')"
+)
 _POWERSHELL_OPEN_COMMAND = "$ErrorActionPreference = 'Stop'; Start-Process -FilePath $env:SCHOLARAIO_PDF_PATH"
 
 
@@ -115,17 +119,26 @@ def _cleanup_stale_wsl_pdfs(directory: Path) -> None:
             continue
 
 
-def _open_wsl_pdf(path: Path, powershell: str, wslpath: str) -> None:
-    windows_temp = _run_text(
-        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", _POWERSHELL_TEMP_COMMAND]
-    )
-    linux_temp = Path(_run_text([wslpath, "-u", windows_temp])).expanduser()
-    managed_temp = linux_temp / _WSL_TEMP_SUBDIR
-    managed_temp.mkdir(parents=True, exist_ok=True)
-    _cleanup_stale_wsl_pdfs(managed_temp)
-    copied_pdf = managed_temp / _safe_temp_pdf_name(path)
-    shutil.copyfile(path, copied_pdf)
-    windows_pdf = _run_text([wslpath, "-w", str(copied_pdf)])
+def cleanup_legacy_wsl_pdf_copies() -> None:
+    """Remove stale random-prefixed PDF copies from the pre-mirror WSL flow."""
+    if not _is_wsl():
+        return
+    powershell = _find_wsl_launcher("powershell.exe")
+    wslpath = _find_wsl_launcher("wslpath")
+    if powershell is None or wslpath is None:
+        return
+    try:
+        windows_temp = _run_text(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", _POWERSHELL_TEMP_COMMAND]
+        )
+        managed_temp = Path(_run_text([wslpath, "-u", windows_temp])).expanduser() / _WSL_TEMP_SUBDIR
+        if managed_temp.is_dir():
+            _cleanup_stale_wsl_pdfs(managed_temp)
+    except (DefaultApplicationOpenError, OSError, subprocess.SubprocessError):
+        return
+
+
+def _launch_windows_pdf(windows_pdf: str, powershell: str) -> None:
     child_env = os.environ.copy()
     forwarded = [entry for entry in child_env.get("WSLENV", "").split(":") if entry]
     if not any(entry.split("/", 1)[0] == "SCHOLARAIO_PDF_PATH" for entry in forwarded):
@@ -147,6 +160,57 @@ def _open_wsl_pdf(path: Path, powershell: str, wslpath: str) -> None:
         text=True,
         timeout=10,
     )
+
+
+def wsl_windows_local_app_data() -> Path:
+    """Return Windows LocalApplicationData as a Linux-visible WSL path."""
+    if not _is_wsl():
+        raise DefaultApplicationOpenError("Windows LocalApplicationData discovery requires WSL")
+    powershell = _find_wsl_launcher("powershell.exe")
+    wslpath = _find_wsl_launcher("wslpath")
+    if powershell is None or wslpath is None:
+        raise DefaultApplicationOpenError("Required WSL Windows bridge launcher is unavailable")
+    try:
+        windows_path = _run_text(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", _POWERSHELL_LOCAL_APP_DATA_COMMAND]
+        )
+        return Path(_run_text([wslpath, "-u", windows_path])).expanduser().resolve()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DefaultApplicationOpenError(f"Could not discover Windows LocalApplicationData: {exc}") from exc
+
+
+def open_wsl_windows_file(path: Path) -> None:
+    """Open an existing WSL-visible file directly in its Windows default app."""
+    resolved = Path(path).expanduser().resolve()
+    if not resolved.is_file():
+        raise DefaultApplicationOpenError(f"Path is not an existing file: {resolved}")
+    if not _is_wsl():
+        raise DefaultApplicationOpenError("Windows default-application launch requires WSL")
+    powershell = _find_wsl_launcher("powershell.exe")
+    wslpath = _find_wsl_launcher("wslpath")
+    if powershell is None or wslpath is None:
+        raise DefaultApplicationOpenError("Required WSL Windows bridge launcher is unavailable")
+    try:
+        windows_pdf = _run_text([wslpath, "-w", str(resolved)])
+        _launch_windows_pdf(windows_pdf, powershell)
+    except DefaultApplicationOpenError:
+        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DefaultApplicationOpenError(f"Could not open file with the Windows default application: {exc}") from exc
+
+
+def _open_wsl_pdf(path: Path, powershell: str, wslpath: str) -> None:
+    windows_temp = _run_text(
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", _POWERSHELL_TEMP_COMMAND]
+    )
+    linux_temp = Path(_run_text([wslpath, "-u", windows_temp])).expanduser()
+    managed_temp = linux_temp / _WSL_TEMP_SUBDIR
+    managed_temp.mkdir(parents=True, exist_ok=True)
+    _cleanup_stale_wsl_pdfs(managed_temp)
+    copied_pdf = managed_temp / _safe_temp_pdf_name(path)
+    shutil.copyfile(path, copied_pdf)
+    windows_pdf = _run_text([wslpath, "-w", str(copied_pdf)])
+    _launch_windows_pdf(windows_pdf, powershell)
 
 
 def open_with_default_application(path: Path) -> None:

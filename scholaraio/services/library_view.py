@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -24,6 +25,7 @@ from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
+    from scholaraio.stores.pdf_edit_mirror import PdfEditMirrorRecord
 
 _AUDIT_CACHE_TTL_SECONDS = 30.0
 _AUDIT_CACHE: dict[str, tuple[float, dict[str, list[dict]]]] = {}
@@ -380,3 +382,134 @@ def get_proceedings_paper_pdf(cfg: Config, paper_id: str) -> Path:
     if pdf is None:
         raise LibraryPdfNotFoundError(paper_id)
     return pdf
+
+
+def _pdf_sync_identity(meta: dict) -> str:
+    doi = str(meta.get("doi") or "").strip().casefold()
+    if doi:
+        for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+            if doi.startswith(prefix):
+                doi = doi[len(prefix) :]
+                break
+        return f"doi:{doi}"
+    raw_ids = meta.get("ids")
+    ids = raw_ids if isinstance(raw_ids, dict) else {}
+    for key in ("arxiv", "pmid", "openalex", "semantic_scholar"):
+        value = str(ids.get(key) or meta.get(f"{key}_id") or "").strip().casefold()
+        if value:
+            return f"{key}:{value}"
+    return ""
+
+
+def _pdf_sync_hash_matches(path: Path | None, expected_hash: str) -> bool:
+    if path is None or not expected_hash:
+        return False
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+    except OSError:
+        return False
+    return digest.hexdigest() == expected_hash
+
+
+def _pdf_sync_target(
+    cfg: Config,
+    *,
+    source: str,
+    paper_dir: Path,
+    meta: dict,
+    record: PdfEditMirrorRecord | None,
+):
+    from scholaraio.services.pdf_edit_mirror import PdfMirrorTarget
+
+    pdf = find_pdf(paper_dir)
+    if pdf is None:
+        stored = record.canonical_path if record is not None else None
+        if stored is not None and stored.parent.resolve() == paper_dir.resolve() and stored.suffix.casefold() == ".pdf":
+            pdf = stored
+        else:
+            pdf = paper_dir / f"{paper_dir.name}.pdf"
+    paper_id = str(meta.get("id") or paper_dir.name)
+    return PdfMirrorTarget(
+        library_kind=source,
+        paper_id=paper_id,
+        canonical_path=pdf.resolve(),
+        library_root=cfg.papers_dir if source == "main" else cfg.proceedings_dir,
+        display_name=pdf.name,
+        identity=_pdf_sync_identity(meta),
+    )
+
+
+def resolve_pdf_edit_mirror_target(
+    cfg: Config,
+    source: str,
+    paper_id: str,
+    *,
+    record: PdfEditMirrorRecord | None = None,
+):
+    """Resolve a mirror target by current ID, then unambiguous durable identity."""
+    from scholaraio.services.pdf_edit_mirror import PdfTargetResolution
+
+    if source == "main":
+        try:
+            paper_dir, meta, _issues = _find_main_paper(cfg, paper_id, include_issues=False)
+        except KeyError:
+            candidates: list[tuple[Path, dict]] = []
+            for candidate_dir in iter_paper_dirs(cfg.papers_dir):
+                try:
+                    candidate_meta = read_meta(candidate_dir)
+                except (OSError, ValueError):
+                    continue
+                candidate_pdf = find_pdf(candidate_dir)
+                same_file = bool(
+                    record is not None
+                    and candidate_pdf is not None
+                    and candidate_pdf.resolve() == record.canonical_path.resolve()
+                )
+                same_identity = bool(
+                    record is not None and record.identity and _pdf_sync_identity(candidate_meta) == record.identity
+                )
+                same_hash = bool(
+                    record is not None and record.base_hash and _pdf_sync_hash_matches(candidate_pdf, record.base_hash)
+                )
+                if same_file or same_identity or same_hash:
+                    candidates.append((candidate_dir, candidate_meta))
+        else:
+            return PdfTargetResolution(
+                target=_pdf_sync_target(cfg, source=source, paper_dir=paper_dir, meta=meta, record=record)
+            )
+    elif source == "proceedings":
+        try:
+            _row, paper_dir, meta = _find_proceedings_row(cfg, paper_id)
+        except KeyError:
+            candidates = []
+            for _row, candidate_dir, candidate_meta in _iter_proceedings_view_records(cfg):
+                candidate_pdf = find_pdf(candidate_dir)
+                same_file = bool(
+                    record is not None
+                    and candidate_pdf is not None
+                    and candidate_pdf.resolve() == record.canonical_path.resolve()
+                )
+                same_identity = bool(
+                    record is not None and record.identity and _pdf_sync_identity(candidate_meta) == record.identity
+                )
+                same_hash = bool(
+                    record is not None and record.base_hash and _pdf_sync_hash_matches(candidate_pdf, record.base_hash)
+                )
+                if same_file or same_identity or same_hash:
+                    candidates.append((candidate_dir, candidate_meta))
+        else:
+            return PdfTargetResolution(
+                target=_pdf_sync_target(cfg, source=source, paper_dir=paper_dir, meta=meta, record=record)
+            )
+    else:
+        raise ValueError(f"Unsupported library source: {source}")
+
+    if len(candidates) == 1:
+        paper_dir, meta = candidates[0]
+        return PdfTargetResolution(
+            target=_pdf_sync_target(cfg, source=source, paper_dir=paper_dir, meta=meta, record=record)
+        )
+    return PdfTargetResolution(target=None, ambiguous=len(candidates) > 1)

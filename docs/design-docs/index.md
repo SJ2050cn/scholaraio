@@ -2,7 +2,7 @@
 
 Status: Current index
 
-Last Updated: 2026-06-12
+Last Updated: 2026-07-14
 
 Design docs are long-lived architecture and runtime decisions. They answer what
 must stay true, not just what one implementation plan happened to do.
@@ -15,6 +15,7 @@ must stay true, not just what one implementation plan happened to do.
 | `migration-mechanism-spec.md` | Migration control-plane contract, journal, locking, and cleanup gates |
 | `directory-migration-sequence.md` | Historical compatibility-window execution order |
 | `user-data-migration-strategy.md` | Historical user-data migration strategy and posture |
+| `wsl-pdf-edit-mirror.md` | Stable Windows PDF edit mirrors, automatic reconciliation, and recovery contract |
 
 ## Rules
 

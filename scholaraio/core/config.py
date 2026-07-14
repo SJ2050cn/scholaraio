@@ -620,6 +620,11 @@ class Config:
         return (self.state_root / "topics").resolve()
 
     @property
+    def pdf_edit_mirror_state_dir(self) -> Path:
+        """WSL PDF 编辑镜像的持久状态目录。"""
+        return (self.state_root / "pdf-edit-mirror").resolve()
+
+    @property
     def cache_root(self) -> Path:
         """未来缓存根目录的绝对路径。"""
         return self._resolve_path(self.paths.cache_root)
@@ -698,6 +703,7 @@ class Config:
             self.search_state_dir,
             self.metrics_state_dir,
             self.topics_state_dir,
+            self.pdf_edit_mirror_state_dir,
             self.toolref_root,
             self.citation_styles_dir,
             self.cache_root,

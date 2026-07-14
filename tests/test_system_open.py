@@ -255,3 +255,55 @@ def test_open_with_default_application_copies_wsl_pdf_to_windows_temp_and_cleans
     assert "SCHOLARAIO_PDF_PATH" in kwargs["env"]["WSLENV"].split(":")
     assert kwargs["check"] is True
     assert kwargs["timeout"] == 10
+
+
+def test_wsl_windows_local_app_data_discovers_linux_visible_managed_root(tmp_path, monkeypatch):
+    _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/1_interop")
+    launchers = {"powershell.exe": "/mnt/c/Windows/powershell.exe", "wslpath": "/usr/bin/wslpath"}
+    monkeypatch.setattr(system_open, "_find_wsl_launcher", lambda name: launchers.get(name))
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0] == launchers["powershell.exe"]:
+            return subprocess.CompletedProcess(args, 0, stdout="C:\\Users\\Test\\AppData\\Local\r\n")
+        return subprocess.CompletedProcess(args, 0, stdout=f"{tmp_path / 'AppData' / 'Local'}\n")
+
+    monkeypatch.setattr(system_open.subprocess, "run", fake_run)
+
+    root = system_open.wsl_windows_local_app_data()
+
+    assert root == (tmp_path / "AppData" / "Local").resolve()
+    assert "LocalApplicationData" in calls[0][0][-1]
+    assert calls[1][0][1:3] == ["-u", "C:\\Users\\Test\\AppData\\Local"]
+
+
+def test_open_wsl_windows_file_launches_stable_path_without_copying(tmp_path, monkeypatch):
+    mirror = tmp_path / "AppData" / "Local" / "ScholarAIO" / "editable-pdfs" / "main" / "sync" / "Paper.pdf"
+    mirror.parent.mkdir(parents=True)
+    mirror.write_bytes(b"%PDF-stable")
+    _set_platform(monkeypatch, "Linux", release="6.6.0-microsoft-standard-WSL2")
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/1_interop")
+    launchers = {"powershell.exe": "/mnt/c/Windows/powershell.exe", "wslpath": "/usr/bin/wslpath"}
+    monkeypatch.setattr(system_open, "_find_wsl_launcher", lambda name: launchers.get(name))
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0] == launchers["wslpath"]:
+            return subprocess.CompletedProcess(
+                args, 0, stdout="C:\\Users\\Test\\AppData\\Local\\ScholarAIO\\editable-pdfs\\main\\sync\\Paper.pdf\r\n"
+            )
+        return subprocess.CompletedProcess(args, 0, stdout="")
+
+    monkeypatch.setattr(system_open.subprocess, "run", fake_run)
+
+    system_open.open_wsl_windows_file(mirror)
+
+    assert [call[0][0] for call in calls] == [launchers["wslpath"], launchers["powershell.exe"]]
+    assert calls[0][0][1] == "-w"
+    launch_args, launch_kwargs = calls[1]
+    assert launch_args[-1] == system_open._POWERSHELL_OPEN_COMMAND
+    assert launch_kwargs["env"]["SCHOLARAIO_PDF_PATH"].endswith("main\\sync\\Paper.pdf")
+    assert list(tmp_path.rglob("*.pdf")) == [mirror]
