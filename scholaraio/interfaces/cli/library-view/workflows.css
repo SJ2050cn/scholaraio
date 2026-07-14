@@ -137,6 +137,24 @@ summary:focus-visible {
   background: var(--accent);
 }
 
+.pdf-sync-status {
+  padding: 8px 9px;
+  border: 1px solid rgba(235, 150, 84, 0.28);
+  border-left: 3px solid var(--warn);
+  border-radius: 7px;
+  color: var(--muted);
+  background: rgba(235, 150, 84, 0.09);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.pdf-sync-status[data-state="sync_failed"] {
+  border-color: rgba(223, 120, 120, 0.28);
+  border-left-color: var(--danger);
+  background: rgba(223, 120, 120, 0.08);
+}
+
 .relevance-line {
   color: var(--accent-strong);
   font-size: 10px;

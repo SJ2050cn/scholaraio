@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
@@ -171,6 +172,148 @@ def test_main_library_detail_returns_abstract_conclusion_toc_and_pdf_without_com
     assert detail["has_pdf"] is True
     assert detail["pdf_url"] == "/api/main/pdf?id=paper-detail"
     assert "commands" not in detail
+
+
+def test_pdf_mirror_target_resolves_main_and_proceedings_records(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    main_dir = _write_main_paper(
+        papers_root,
+        "Doe-2026-Mirror",
+        paper_id="main-mirror",
+        title="Main mirror paper",
+        write_pdf=True,
+    )
+    _write_proceedings_child(tmp_path / "data" / "libraries" / "proceedings")
+    child_dir = tmp_path / "data" / "libraries" / "proceedings" / "Proc-2026-Test" / "papers" / "Wave-2026-Test"
+    (child_dir / "Wave-2026-Test.pdf").write_bytes(b"%PDF-proceedings")
+    cfg = _build_config({}, tmp_path)
+
+    main = resolve_pdf_edit_mirror_target(cfg, "main", "main-mirror")
+    proceedings = resolve_pdf_edit_mirror_target(cfg, "proceedings", "proc-paper-1")
+
+    assert main.target is not None
+    assert main.target.canonical_path == (main_dir / "Doe-2026-Mirror.pdf").resolve()
+    assert main.target.library_root == cfg.papers_dir
+    assert main.target.identity == "doi:10.1000/test"
+    assert proceedings.target is not None
+    assert proceedings.target.canonical_path == (child_dir / "Wave-2026-Test.pdf").resolve()
+    assert proceedings.target.library_root == cfg.proceedings_dir
+    assert proceedings.target.identity == "doi:10.1000/proc"
+
+
+def test_pdf_mirror_target_keeps_missing_canonical_path_for_recovery(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
+    from scholaraio.stores.pdf_edit_mirror import PdfEditMirrorStore
+
+    papers_root = tmp_path / "data" / "libraries" / "papers"
+    paper_dir = _write_main_paper(
+        papers_root,
+        "Doe-2026-Recover",
+        paper_id="recover-paper",
+        title="Recover paper",
+        write_pdf=False,
+    )
+    cfg = _build_config({}, tmp_path)
+    canonical = paper_dir / "Doe-2026-Recover.pdf"
+    record = PdfEditMirrorStore(tmp_path / "sync.db").get_or_create(
+        library_kind="main",
+        paper_id="recover-paper",
+        canonical_path=canonical,
+        mirror_path=tmp_path / "mirror.pdf",
+        identity="doi:10.1000/test",
+    )
+
+    resolution = resolve_pdf_edit_mirror_target(cfg, record.library_kind, record.paper_id, record=record)
+
+    assert resolution.target is not None
+    assert resolution.target.canonical_path == canonical.resolve()
+
+
+def test_pdf_mirror_target_rebinds_changed_id_by_unique_doi(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
+    from scholaraio.stores.pdf_edit_mirror import PdfEditMirrorStore
+
+    cfg = _build_config({}, tmp_path)
+    old_path = cfg.papers_dir / "Old-2025-Paper" / "Old-2025-Paper.pdf"
+    record = PdfEditMirrorStore(tmp_path / "sync.db").get_or_create(
+        library_kind="main",
+        paper_id="old-id",
+        canonical_path=old_path,
+        mirror_path=tmp_path / "mirror.pdf",
+        identity="doi:10.1000/test",
+    )
+    new_dir = _write_main_paper(
+        cfg.papers_dir,
+        "New-2026-Paper",
+        paper_id="new-id",
+        title="Renamed paper",
+        write_pdf=True,
+    )
+
+    resolution = resolve_pdf_edit_mirror_target(cfg, "main", "old-id", record=record)
+
+    assert resolution.ambiguous is False
+    assert resolution.target is not None
+    assert resolution.target.paper_id == "new-id"
+    assert resolution.target.canonical_path == (new_dir / "New-2026-Paper.pdf").resolve()
+
+
+def test_pdf_mirror_target_pauses_ambiguous_identity_rebind(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
+    from scholaraio.stores.pdf_edit_mirror import PdfEditMirrorStore
+
+    cfg = _build_config({}, tmp_path)
+    record = PdfEditMirrorStore(tmp_path / "sync.db").get_or_create(
+        library_kind="main",
+        paper_id="removed-id",
+        canonical_path=cfg.papers_dir / "Removed" / "Removed.pdf",
+        mirror_path=tmp_path / "mirror.pdf",
+        identity="doi:10.1000/test",
+    )
+    _write_main_paper(cfg.papers_dir, "First", paper_id="first", title="First", write_pdf=True)
+    _write_main_paper(cfg.papers_dir, "Second", paper_id="second", title="Second", write_pdf=True)
+
+    resolution = resolve_pdf_edit_mirror_target(cfg, "main", "removed-id", record=record)
+
+    assert resolution.target is None
+    assert resolution.ambiguous is True
+
+
+def test_pdf_mirror_target_rebinds_by_unique_last_common_hash_without_identity(tmp_path: Path) -> None:
+    from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
+    from scholaraio.stores.pdf_edit_mirror import PdfEditMirrorStore
+
+    cfg = _build_config({}, tmp_path)
+    store = PdfEditMirrorStore(tmp_path / "sync.db")
+    record = store.get_or_create(
+        library_kind="main",
+        paper_id="removed-id",
+        canonical_path=cfg.papers_dir / "Removed" / "Removed.pdf",
+        mirror_path=tmp_path / "mirror.pdf",
+        identity="",
+    )
+    new_dir = _write_main_paper(
+        cfg.papers_dir,
+        "Hash-Rebound",
+        paper_id="new-id",
+        title="Hash rebound",
+        write_pdf=True,
+    )
+    meta_path = new_dir / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta.pop("doi", None)
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    pdf = new_dir / "Hash-Rebound.pdf"
+    base_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    record = store.update(record.sync_id, base_hash=base_hash)
+
+    resolution = resolve_pdf_edit_mirror_target(cfg, "main", "removed-id", record=record)
+
+    assert resolution.ambiguous is False
+    assert resolution.target is not None
+    assert resolution.target.paper_id == "new-id"
 
 
 def test_main_library_view_reuses_audit_map_for_poll_and_detail(tmp_path: Path, monkeypatch) -> None:

@@ -5,11 +5,11 @@ import json
 import shutil
 import subprocess
 import threading
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -20,12 +20,24 @@ from scholaraio.core.config import _build_config
 
 
 @contextmanager
-def _running_library_server(cfg, *, host="127.0.0.1"):
+def _running_library_server(cfg, *, host="127.0.0.1", native_target="host"):
     from scholaraio.interfaces.cli.gui import create_library_view_server
+    from scholaraio.services.system_open import DefaultApplicationOpenCapability
 
     # Native-open route tests need a deterministic desktop-capable host even on
     # headless CI runners. System capability detection is covered separately.
-    with patch.dict("os.environ", {"DISPLAY": ":pytest"}):
+    capability_patch = (
+        patch(
+            "scholaraio.services.system_open.default_application_open_capability",
+            return_value=DefaultApplicationOpenCapability(True, native_target),
+        )
+        if native_target is not None
+        else nullcontext()
+    )
+    with (
+        patch.dict("os.environ", {"DISPLAY": ":pytest"}),
+        capability_patch,
+    ):
         server = create_library_view_server(cfg, host=host, port=0)
     bound_host, port = server.server_address[:2]
     connect_host = "127.0.0.1" if bound_host in {"0.0.0.0", "::"} else bound_host
@@ -388,7 +400,7 @@ def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path)
     cfg = _build_config({}, tmp_path)
 
     with (
-        _running_library_server(cfg) as (_server, base_url),
+        _running_library_server(cfg, native_target="windows") as (_server, base_url),
         urlopen(f"{base_url}/", timeout=3) as response,
     ):
         html = response.read().decode("utf-8")
@@ -744,6 +756,165 @@ context.fetch = async (url, options = {}) => {
     assert payload["downloadedHref"] == "/api/main/pdf?id=action-paper&download=1"
     assert payload["temporaryNodes"] == 0
     assert payload["copyButtonBusy"] is False
+
+
+def test_library_view_shell_and_app_show_only_actionable_pdf_sync_states(tmp_path) -> None:
+    from scholaraio.interfaces.cli.gui import _static_dir
+
+    html = (_static_dir() / "index.html").read_text(encoding="utf-8")
+    assert 'id="pdf-sync-status"' in html
+
+    payload = _run_library_app_vm(
+        r"""
+  const detail = {
+    paper_id: "sync-paper",
+    title: "Sync paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=sync-paper",
+    issues: [],
+    toc: [],
+  };
+  renderDetail({ ...detail, pdf_sync: { state: "not_opened", retryable: false, message: "" } });
+  const quietNotOpened = els.pdfSyncStatus.hidden;
+  renderPdfSyncStatus({ state: "in_sync", retryable: false, message: "" });
+  const quietInSync = els.pdfSyncStatus.hidden;
+  renderPdfSyncStatus({ state: "sync_pending", retryable: true, message: "Waiting for the reader to finish saving" });
+  const pending = {
+    hidden: els.pdfSyncStatus.hidden,
+    state: els.pdfSyncStatus.dataset.state,
+    text: els.pdfSyncStatus.textContent,
+  };
+  renderPdfSyncStatus({ state: "sync_failed", retryable: false, message: "Disk is full" });
+  const failed = {
+    hidden: els.pdfSyncStatus.hidden,
+    state: els.pdfSyncStatus.dataset.state,
+    text: els.pdfSyncStatus.textContent,
+  };
+  return { quietNotOpened, quietInSync, pending, failed };
+"""
+    )
+
+    assert payload["quietNotOpened"] is True
+    assert payload["quietInSync"] is True
+    assert payload["pending"] == {
+        "hidden": False,
+        "state": "sync_pending",
+        "text": "Waiting for the reader to finish saving",
+    }
+    assert payload["failed"] == {"hidden": False, "state": "sync_failed", "text": "Disk is full"}
+
+
+def test_library_view_app_refreshes_selected_pdf_sync_status_from_scoped_endpoint() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.selected.main = "sync-paper";
+  state.capabilities = {
+    csrfToken: "csrf-token",
+    nativePdfOpen: true,
+    nativePdfReason: "",
+    pdfDelivery: {
+      mode: "native",
+      target: "windows",
+      label: "Open in default viewer",
+      reason: "",
+      sync: "automatic",
+    },
+  };
+  renderDetail({
+    paper_id: "sync-paper",
+    title: "Sync paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=sync-paper",
+    pdf_sync: { state: "in_sync", retryable: false, message: "" },
+    issues: [],
+    toc: [],
+  });
+  await refreshPdfSyncStatus();
+  const afterRefresh = {
+    hidden: els.pdfSyncStatus.hidden,
+    state: els.pdfSyncStatus.dataset.state,
+    text: els.pdfSyncStatus.textContent,
+  };
+  state.selected.main = "different-paper";
+  await refreshPdfSyncStatus();
+  return { requests: __syncRequests, afterRefresh };
+""",
+        fetch_setup=r"""
+context.__syncRequests = [];
+const originalFetch = context.fetch;
+context.fetch = async (url, options = {}) => {
+  const target = String(url);
+  if (target.includes("/pdf-sync")) {
+    context.__syncRequests.push(target);
+    return { ok: true, json: async () => ({
+      state: "sync_pending",
+      retryable: true,
+      last_success_at: "",
+      message: "Waiting for a stable PDF save",
+    }) };
+  }
+  return originalFetch(url, options);
+};
+""",
+    )
+
+    assert payload["requests"] == ["/api/main/pdf-sync?id=sync-paper"]
+    assert payload["afterRefresh"] == {
+        "hidden": False,
+        "state": "sync_pending",
+        "text": "Waiting for a stable PDF save",
+    }
+
+
+def test_library_view_app_starts_sync_polling_when_capabilities_arrive_after_detail() -> None:
+    payload = _run_library_app_vm(
+        r"""
+  state.tab = "main";
+  state.selected.main = "late-capability-paper";
+  renderDetail({
+    paper_id: "late-capability-paper",
+    title: "Late capability paper",
+    has_pdf: true,
+    pdf_url: "/api/main/pdf?id=late-capability-paper",
+    pdf_sync: { state: "in_sync", retryable: false, message: "" },
+    issues: [],
+    toc: [],
+  });
+  const before = state.pdfSyncTimer;
+  __resolveCapabilities({
+    csrf_token: "csrf-token",
+    native_pdf_open: { enabled: true, reason: "" },
+    pdf_delivery: {
+      mode: "native",
+      target: "windows",
+      label: "Open in default viewer",
+      reason: "",
+      sync: "automatic",
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return {
+    before,
+    after: state.pdfSyncTimer,
+    sync: state.capabilities.pdfDelivery.sync,
+    target: state.capabilities.pdfDelivery.target,
+  };
+""",
+        fetch_setup=r"""
+context.__capabilities = new Promise((resolve) => { context.__resolveCapabilities = resolve; });
+context.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/api/capabilities")) {
+    return { ok: true, json: async () => context.__capabilities };
+  }
+  if (target.includes("/detail")) return { ok: true, json: async () => ({}) };
+  return { ok: true, json: async () => ({ papers: [], total: 0, issue_totals: {} }) };
+};
+""",
+    )
+
+    assert payload == {"before": None, "after": 1, "sync": "automatic", "target": "windows"}
 
 
 def test_library_view_app_falls_back_to_client_download_when_native_open_fails() -> None:
@@ -1694,15 +1865,21 @@ def test_library_view_capabilities_are_per_server_and_loopback_aware(tmp_path):
 
     cfg = _build_config({}, tmp_path)
 
-    with patch(
-        "scholaraio.services.system_open.default_application_open_capability",
-        return_value=DefaultApplicationOpenCapability(True, "windows"),
+    def service_factory(*_args, **_kwargs):
+        return SimpleNamespace(stop=Mock())
+
+    with (
+        patch(
+            "scholaraio.services.system_open.default_application_open_capability",
+            return_value=DefaultApplicationOpenCapability(True, "windows"),
+        ),
+        patch("scholaraio.services.pdf_edit_mirror.PdfEditMirrorService.for_wsl", side_effect=service_factory),
     ):
-        with _running_library_server(cfg) as (_server, base_url):
+        with _running_library_server(cfg, native_target=None) as (_server, base_url):
             payload, _headers = _json_response(f"{base_url}/api/capabilities")
-        with _running_library_server(cfg) as (_server, second_base_url):
+        with _running_library_server(cfg, native_target=None) as (_server, second_base_url):
             second, _headers = _json_response(f"{second_base_url}/api/capabilities")
-        with _running_library_server(cfg, host="0.0.0.0") as (_server, wildcard_base_url):
+        with _running_library_server(cfg, host="0.0.0.0", native_target=None) as (_server, wildcard_base_url):
             wildcard, _headers = _json_response(f"{wildcard_base_url}/api/capabilities")
 
     assert payload["csrf_token"]
@@ -1713,6 +1890,7 @@ def test_library_view_capabilities_are_per_server_and_loopback_aware(tmp_path):
         "target": "windows",
         "label": "Open in default viewer",
         "reason": "",
+        "sync": "automatic",
     }
     assert payload["search_modes"] == {
         "main": ["metadata", "keyword", "semantic", "unified"],
@@ -1729,6 +1907,34 @@ def test_library_view_capabilities_are_per_server_and_loopback_aware(tmp_path):
     }
 
 
+def test_library_view_wsl_mirror_initialization_failure_falls_back_without_exposing_paths(tmp_path):
+    import sqlite3
+
+    from scholaraio.services.system_open import DefaultApplicationOpenCapability
+
+    cfg = _build_config({}, tmp_path)
+    with (
+        patch(
+            "scholaraio.services.system_open.default_application_open_capability",
+            return_value=DefaultApplicationOpenCapability(True, "windows"),
+        ),
+        patch(
+            "scholaraio.services.pdf_edit_mirror.PdfEditMirrorService.for_wsl",
+            side_effect=sqlite3.OperationalError("cannot open /secret/sync.db"),
+        ),
+        patch("scholaraio.interfaces.cli.gui._ui"),
+        _running_library_server(cfg, native_target=None) as (_server, base_url),
+    ):
+        payload, _headers = _json_response(f"{base_url}/api/capabilities")
+
+    assert payload["native_pdf_open"] == {
+        "enabled": False,
+        "reason": "WSL PDF edit mirror could not be initialized.",
+    }
+    assert payload["pdf_delivery"]["mode"] == "download"
+    assert "/secret" not in repr(payload)
+
+
 def test_library_view_capabilities_download_when_host_launcher_is_unavailable(tmp_path):
     from scholaraio.services.system_open import DefaultApplicationOpenCapability
 
@@ -1739,7 +1945,7 @@ def test_library_view_capabilities_download_when_host_launcher_is_unavailable(tm
             "scholaraio.services.system_open.default_application_open_capability",
             return_value=DefaultApplicationOpenCapability(False, None, reason),
         ),
-        _running_library_server(cfg) as (_server, base_url),
+        _running_library_server(cfg, native_target=None) as (_server, base_url),
     ):
         payload, _headers = _json_response(f"{base_url}/api/capabilities")
 
@@ -1907,6 +2113,121 @@ def test_library_view_native_open_supports_proceedings_child_pdf(tmp_path):
 
     assert payload == {"status": "opened", "paper_id": "proceeding-action-paper"}
     open_default.assert_called_once_with((child_dir / "Roe-2026-Proceeding.pdf").resolve())
+
+
+def test_library_view_wsl_native_open_reuses_stable_edit_mirror_and_exposes_status(tmp_path):
+    from scholaraio.services.pdf_edit_mirror import PdfOpenPreparation
+    from scholaraio.services.system_open import DefaultApplicationOpenCapability
+
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    mirror = tmp_path / "windows-local-app-data" / "ScholarAIO" / "editable-pdfs" / "main" / "sync" / "Action.pdf"
+    mirror.parent.mkdir(parents=True)
+    mirror.write_bytes(b"%PDF-mirror")
+    sync_status = {
+        "state": "in_sync",
+        "retryable": False,
+        "last_success_at": "2026-07-14T12:00:00+00:00",
+        "message": "",
+    }
+    service = SimpleNamespace(
+        prepare_for_open=lambda _target: PdfOpenPreparation(mirror, True, sync_status),
+        status=lambda _source, _paper_id: dict(sync_status),
+        stop=Mock(),
+    )
+
+    with (
+        patch(
+            "scholaraio.services.system_open.default_application_open_capability",
+            return_value=DefaultApplicationOpenCapability(True, "windows"),
+        ),
+        patch("scholaraio.services.pdf_edit_mirror.PdfEditMirrorService.for_wsl", return_value=service),
+        patch("scholaraio.services.system_open.open_wsl_windows_file") as open_windows,
+        _running_library_server(cfg, native_target="windows") as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        detail, _headers = _json_response(f"{base_url}/api/main/detail?id=action-paper")
+        status, _headers = _json_response(f"{base_url}/api/main/pdf-sync?id=action-paper")
+        for _index in range(2):
+            request = _post_json(
+                f"{base_url}/api/main/open-pdf",
+                {"id": "action-paper"},
+                token=capabilities["csrf_token"],
+                origin=base_url,
+            )
+            with urlopen(request, timeout=3) as response:
+                assert json.loads(response.read().decode("utf-8")) == {
+                    "status": "opened",
+                    "paper_id": "action-paper",
+                }
+
+    assert capabilities["pdf_delivery"]["target"] == "windows"
+    assert capabilities["pdf_delivery"]["sync"] == "automatic"
+    assert detail["pdf_sync"] == sync_status
+    assert status == sync_status
+    assert open_windows.call_args_list == [call(mirror), call(mirror)]
+    service.stop.assert_called_once_with()
+
+
+def test_library_view_wsl_refuses_unvalidated_mirror_so_client_can_download_canonical(tmp_path):
+    from scholaraio.services.pdf_edit_mirror import PdfOpenPreparation
+    from scholaraio.services.system_open import DefaultApplicationOpenCapability
+
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    mirror = tmp_path / "managed" / "unsafe.pdf"
+    pending = {
+        "state": "sync_pending",
+        "retryable": True,
+        "last_success_at": "",
+        "message": "PDF candidate has no end-of-file marker",
+    }
+    service = SimpleNamespace(
+        prepare_for_open=lambda _target: PdfOpenPreparation(mirror, False, pending),
+        status=lambda _source, _paper_id: dict(pending),
+        stop=Mock(),
+    )
+
+    with (
+        patch(
+            "scholaraio.services.system_open.default_application_open_capability",
+            return_value=DefaultApplicationOpenCapability(True, "windows"),
+        ),
+        patch("scholaraio.services.pdf_edit_mirror.PdfEditMirrorService.for_wsl", return_value=service),
+        patch("scholaraio.services.system_open.open_wsl_windows_file") as open_windows,
+        _running_library_server(cfg, native_target="windows") as (_server, base_url),
+    ):
+        capabilities, _headers = _json_response(f"{base_url}/api/capabilities")
+        request = _post_json(
+            f"{base_url}/api/main/open-pdf",
+            {"id": "action-paper"},
+            token=capabilities["csrf_token"],
+            origin=base_url,
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        payload = json.loads(caught.value.read().decode("utf-8"))
+
+    assert caught.value.code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert payload["code"] == "native_open_failed"
+    assert "end-of-file" in payload["error"]
+    open_windows.assert_not_called()
+
+
+def test_library_view_pdf_sync_status_validates_paper_id_without_exposing_paths(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+
+    with _running_library_server(cfg) as (_server, base_url):
+        status, _headers = _json_response(f"{base_url}/api/main/pdf-sync?id=action-paper")
+        with pytest.raises(HTTPError) as caught:
+            urlopen(f"{base_url}/api/main/pdf-sync?id=missing-paper", timeout=3)
+
+    assert status == {
+        "state": "not_opened",
+        "retryable": False,
+        "last_success_at": "",
+        "message": "",
+    }
+    assert "/" not in repr(status)
+    assert caught.value.code == HTTPStatus.NOT_FOUND
 
 
 @pytest.mark.parametrize("method", ["PUT", "PATCH", "DELETE"])

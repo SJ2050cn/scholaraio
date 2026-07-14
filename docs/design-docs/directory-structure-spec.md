@@ -287,6 +287,7 @@ Target second-level layout:
 
 ```text
 data/state/
+├── pdf-edit-mirror/
 ├── search/
 ├── metrics/
 ├── topics/
@@ -299,6 +300,7 @@ Examples:
 - metrics database
 - topic-model metadata
 - persistent session or history records
+- WSL PDF edit-mirror mappings and one bounded non-canonical recovery copy per opened PDF
 
 Requirements:
 

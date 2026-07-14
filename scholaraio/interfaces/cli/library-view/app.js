@@ -1,4 +1,5 @@
 const POLL_MS = 2200;
+const PDF_SYNC_POLL_MS = 5000;
 
 const state = {
   tab: "main",
@@ -40,6 +41,9 @@ const state = {
     volume: "",
   },
   pollTimer: null,
+  pdfSyncTimer: null,
+  pdfSyncKey: "",
+  pdfSyncRequestSeq: 0,
 };
 
 const els = {
@@ -83,6 +87,7 @@ const els = {
   copyBibtexButton: document.getElementById("copy-bibtex-button"),
   previewPdfButton: document.getElementById("preview-pdf-button"),
   nativePdfButton: document.getElementById("native-pdf-button"),
+  pdfSyncStatus: document.getElementById("pdf-sync-status"),
   metadataGrid: document.getElementById("metadata-grid"),
   issueList: document.getElementById("issue-list"),
   detailAbstract: document.getElementById("detail-abstract"),
@@ -131,6 +136,7 @@ async function loadCapabilities() {
           advertisedDelivery?.label || (deliveryMode === "native" ? "Open in default viewer" : "Download PDF"),
         ),
         reason: String(advertisedDelivery?.reason || nativePdfReason),
+        sync: String(advertisedDelivery?.sync || ""),
       },
     };
   } catch (_err) {
@@ -139,10 +145,13 @@ async function loadCapabilities() {
       csrfToken: "",
       nativePdfOpen: false,
       nativePdfReason: reason,
-      pdfDelivery: { mode: "download", target: "client", label: "Download PDF", reason },
+      pdfDelivery: { mode: "download", target: "client", label: "Download PDF", reason, sync: "" },
     };
   }
-  if (state.detail) renderDetailActions(state.detail);
+  if (state.detail) {
+    renderDetailActions(state.detail);
+    schedulePdfSyncPolling(state.detail);
+  }
 }
 
 function activePayload() {
@@ -672,6 +681,80 @@ function renderDetailActions(detail) {
   } else els.nativePdfButton.title = "Open this PDF with the operating system's default viewer";
 }
 
+function renderPdfSyncStatus(status) {
+  const stateName = String(status?.state || "not_opened");
+  const actionable = stateName === "sync_pending" || stateName === "sync_failed";
+  els.pdfSyncStatus.hidden = !actionable;
+  els.pdfSyncStatus.dataset.state = stateName;
+  els.pdfSyncStatus.textContent = actionable
+    ? String(status?.message || (stateName === "sync_pending" ? "PDF synchronization is pending." : "PDF synchronization failed."))
+    : "";
+}
+
+function stopPdfSyncPolling() {
+  clearInterval(state.pdfSyncTimer);
+  state.pdfSyncTimer = null;
+  state.pdfSyncKey = "";
+  state.pdfSyncRequestSeq += 1;
+}
+
+function pdfSyncPollingEligible(detail) {
+  return Boolean(
+    detail?.paper_id &&
+      detail?.has_pdf &&
+      state.capabilities.pdfDelivery?.target === "windows" &&
+      state.capabilities.pdfDelivery?.sync === "automatic" &&
+      document.visibilityState !== "hidden",
+  );
+}
+
+async function refreshPdfSyncStatus() {
+  const detail = state.detail;
+  const source = state.tab === "main" ? "main" : "proceedings";
+  const paperId = detail?.paper_id;
+  if (!pdfSyncPollingEligible(detail) || state.selected[source] !== paperId) return;
+  const requestSeq = ++state.pdfSyncRequestSeq;
+  try {
+    const status = await fetchJson(`/api/${source}/pdf-sync?id=${encodeURIComponent(paperId)}`);
+    if (
+      requestSeq !== state.pdfSyncRequestSeq ||
+      state.tab !== source ||
+      state.selected[source] !== paperId ||
+      state.detail?.paper_id !== paperId
+    ) {
+      return;
+    }
+    state.detail = { ...state.detail, pdf_sync: status };
+    renderPdfSyncStatus(status);
+  } catch (_err) {
+    if (
+      requestSeq === state.pdfSyncRequestSeq &&
+      state.tab === source &&
+      state.selected[source] === paperId &&
+      state.detail?.paper_id === paperId
+    ) {
+      renderPdfSyncStatus({
+        state: "sync_failed",
+        retryable: true,
+        message: "Could not refresh PDF synchronization status.",
+      });
+    }
+  }
+}
+
+function schedulePdfSyncPolling(detail) {
+  if (!pdfSyncPollingEligible(detail)) {
+    stopPdfSyncPolling();
+    return;
+  }
+  const source = state.tab === "main" ? "main" : "proceedings";
+  const key = `${source}:${detail.paper_id}`;
+  if (state.pdfSyncTimer && state.pdfSyncKey === key) return;
+  stopPdfSyncPolling();
+  state.pdfSyncKey = key;
+  state.pdfSyncTimer = setInterval(refreshPdfSyncStatus, PDF_SYNC_POLL_MS);
+}
+
 function renderDetail(detail) {
   if (!detail) {
     state.detail = null;
@@ -681,6 +764,8 @@ function renderDetail(detail) {
     els.detailAbstract.textContent = "--";
     els.detailConclusion.textContent = "--";
     els.tocList.textContent = "";
+    renderPdfSyncStatus(null);
+    stopPdfSyncPolling();
     renderDetailActions(null);
     return;
   }
@@ -691,6 +776,8 @@ function renderDetail(detail) {
   renderMarkdown(els.detailAbstract, detail.abstract);
   renderMarkdown(els.detailConclusion, detail.l3_conclusion);
   renderToc(detail);
+  renderPdfSyncStatus(detail.pdf_sync);
+  schedulePdfSyncPolling(detail);
   renderDetailActions(detail);
 }
 
@@ -823,6 +910,7 @@ async function deliverSelectedPdf() {
       body: JSON.stringify({ id: detail.paper_id }),
     });
     showToast("PDF opened in the default viewer.");
+    await refreshPdfSyncStatus();
   } catch (err) {
     if (downloadPdf(detail)) {
       showToast(`The default viewer could not be opened, so the PDF was downloaded instead: ${String(err)}`, "warning");
@@ -1014,6 +1102,11 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.pdfFullscreen) setPdfFullscreen(false);
   });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") stopPdfSyncPolling();
+    else schedulePdfSyncPolling(state.detail);
+  });
+  globalThis.addEventListener?.("beforeunload", stopPdfSyncPolling);
   document.querySelectorAll("th[data-sort]").forEach((th) => {
     th.addEventListener("click", () => {
       const key = th.dataset.sort;

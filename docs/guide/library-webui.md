@@ -1,6 +1,6 @@
 # Library WebUI
 
-The ScholarAIO Library WebUI is a local, library-read-only workspace for browsing records, copying citations, reading PDFs, checking metadata quality, and running ranked retrieval without leaving the browser.
+The ScholarAIO Library WebUI is a local, metadata-read-only workspace for browsing records, copying citations, reading PDFs, checking metadata quality, and running ranked retrieval without leaving the browser. On WSL, PDF saves made through the Windows default viewer are the deliberate exception: ScholarAIO validates and synchronizes those PDF bytes back to the canonical library file.
 
 ## Start the WebUI
 
@@ -78,9 +78,17 @@ Choose **Preview PDF** or the table's **PDF** pill to keep reading inside the We
 
 ### Open a PDF in the default viewer
 
-When ScholarAIO can reach a desktop safely, choose **Open in default viewer** to launch the same canonical PDF in the operating system's configured PDF application. This supports opening several papers in independent native windows while keeping the WebUI available for searching.
+When ScholarAIO can reach a desktop safely, choose **Open in default viewer** to launch the PDF in the operating system's configured PDF application. This supports opening several papers in independent native windows while keeping the WebUI available for searching.
 
-On WSL, ScholarAIO copies the PDF to a managed `ScholarAIO` folder under the Windows temporary directory and asks Windows to open that copy. The Windows default association is respected, including applications such as Foxit Reader. Temporary copies older than 24 hours are cleaned up opportunistically. The canonical library PDF is never modified.
+On native Windows, macOS, and Linux, the viewer opens the canonical local PDF directly. On WSL, ScholarAIO instead maintains one stable edit mirror per library PDF under `%LOCALAPPDATA%\ScholarAIO\editable-pdfs`. The readable filename no longer receives a new random prefix on every launch. The Windows default association is respected, including applications such as Foxit Reader.
+
+When the reader saves an embedded annotation, highlight, comment, form value, or other PDF change, ScholarAIO waits for a stable complete file, validates it, and automatically writes the newest valid version back to the canonical WSL library PDF. Canonical refetches flow in the other direction. If both sides changed, the newer nanosecond modification time wins; equal times prefer the Windows edit mirror. Reconciliation uses atomic replacement and keeps one bounded recovery copy under `data/state/pdf-edit-mirror/`.
+
+The synchronization monitor survives WebUI and machine restarts because mirror mappings and hashes are stored in `data/state/pdf-edit-mirror/sync.db`. A reader may keep saving after the WebUI stops; the next WebUI startup detects and reconciles that edit. Old random files under the legacy Windows temporary `ScholarAIO` folder are cleanup-only and are never adopted or written back.
+
+Normal successful synchronization is silent. The Inspector shows a non-modal message only while synchronization is pending or has failed. A malformed, partial, locked, or unvalidated mirror is never launched or copied over a valid canonical PDF; the existing browser-download fallback remains available.
+
+Automatic persistence covers changes written into the PDF or saved by atomically replacing that PDF. It cannot recover annotations stored only in a reader-specific cloud account, application database, or unrelated sidecar while the PDF itself remains unchanged.
 
 When the WebUI is bound to a non-loopback host, or the server has no compatible desktop launcher, the action automatically becomes **Download PDF**. The browser receives an attachment and opens or saves it on the client machine according to its own settings. This is the correct behavior for a WebUI hosted on another computer: a server cannot directly launch an application on the browser's computer.
 
@@ -92,7 +100,7 @@ The action is intentionally restricted:
 - the request body contains a stable paper ID, never a filesystem path; and
 - ScholarAIO resolves that ID through the configured library before launching an application.
 
-If an advertised native launch fails at runtime, the WebUI automatically starts the browser download and reports the fallback. The action is disabled only when the selected record has no PDF. The library remains metadata-read-only; opening or downloading a PDF does not edit a record.
+If an advertised native launch fails at runtime, or a safe current WSL mirror cannot be established within the pre-launch budget, the WebUI automatically starts the browser download and reports the fallback. The action is disabled only when the selected record has no PDF. Opening or downloading a PDF does not edit bibliographic metadata.
 
 ## Live refresh and ranked results
 
@@ -107,6 +115,7 @@ The record list continues to refresh from the library. Expensive semantic or uni
 | Unified search is `degraded` | Results are still valid for the available retrieval leg; follow the displayed rebuild command to restore both legs. |
 | The action says **Download PDF** | This is expected for remote/non-loopback deployments or hosts without a desktop launcher; the file is delivered to the browser computer. |
 | Native viewer launch fails on WSL | Confirm Windows interoperability provides `powershell.exe` and `wslpath`, and that Windows has a default PDF application. The WebUI falls back to a browser download if launch still fails. |
+| PDF synchronization remains pending | Finish or close the reader's Save operation, then check free disk space and permissions for both the library and `%LOCALAPPDATA%\ScholarAIO\editable-pdfs`. ScholarAIO retries automatically. |
 | Native viewer launch fails on Linux | Install/configure `xdg-open` and a default PDF application in the desktop session. The WebUI falls back to a browser download if launch still fails. |
 | BibTeX copy fails | Allow clipboard access or use a browser that supports the local textarea copy fallback. |
 | No rows remain after filtering | Choose **Clear all**, then add filters one at a time. |

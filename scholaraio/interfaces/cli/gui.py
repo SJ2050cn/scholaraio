@@ -8,6 +8,7 @@ import json
 import mimetypes
 import secrets
 import shutil
+import sqlite3
 import threading
 import webbrowser
 from http import HTTPStatus
@@ -18,6 +19,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
+    from scholaraio.services.pdf_edit_mirror import PdfEditMirrorService
 
 _MAX_JSON_BODY_BYTES = 64 * 1024
 _NATIVE_PDF_OPEN_PATHS = frozenset({"/api/main/open-pdf", "/api/proceedings/open-pdf"})
@@ -95,6 +97,7 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
     native_pdf_open_enabled: bool
     native_pdf_open_reason: str
     pdf_delivery: dict[str, str]
+    pdf_edit_mirror_service: PdfEditMirrorService | None
 
     server_version = "ScholarAIOLibraryGUI/2.0"
 
@@ -289,7 +292,22 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
             get_proceedings_paper_bibtex,
             get_proceedings_paper_detail,
             get_proceedings_paper_pdf,
+            resolve_pdf_edit_mirror_target,
         )
+
+        def pdf_sync_status(source: str, paper_id: str, *, validate_paper: bool = True) -> dict[str, object]:
+            if validate_paper:
+                resolution = resolve_pdf_edit_mirror_target(self.cfg, source, paper_id)
+                if resolution.target is None:
+                    raise KeyError(paper_id)
+            if self.pdf_edit_mirror_service is None:
+                return {
+                    "state": "not_opened",
+                    "retryable": False,
+                    "last_success_at": "",
+                    "message": "",
+                }
+            return self.pdf_edit_mirror_service.status(source, paper_id)
 
         try:
             if path == "/api/health":
@@ -353,7 +371,15 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 paper_id = self._required_query_id()
                 if paper_id is None:
                     return
-                self._send_json(HTTPStatus.OK, get_main_paper_detail(self.cfg, paper_id))
+                detail = get_main_paper_detail(self.cfg, paper_id)
+                detail["pdf_sync"] = pdf_sync_status("main", paper_id, validate_paper=False)
+                self._send_json(HTTPStatus.OK, detail)
+                return
+            if path == "/api/main/pdf-sync":
+                paper_id = self._required_query_id()
+                if paper_id is None:
+                    return
+                self._send_json(HTTPStatus.OK, pdf_sync_status("main", paper_id))
                 return
             if path == "/api/main/bibtex":
                 paper_id = self._required_query_id()
@@ -380,7 +406,15 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 paper_id = self._required_query_id()
                 if paper_id is None:
                     return
-                self._send_json(HTTPStatus.OK, get_proceedings_paper_detail(self.cfg, paper_id))
+                detail = get_proceedings_paper_detail(self.cfg, paper_id)
+                detail["pdf_sync"] = pdf_sync_status("proceedings", paper_id, validate_paper=False)
+                self._send_json(HTTPStatus.OK, detail)
+                return
+            if path == "/api/proceedings/pdf-sync":
+                paper_id = self._required_query_id()
+                if paper_id is None:
+                    return
+                self._send_json(HTTPStatus.OK, pdf_sync_status("proceedings", paper_id))
                 return
             if path == "/api/proceedings/bibtex":
                 paper_id = self._required_query_id()
@@ -468,10 +502,12 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
             LibraryPdfNotFoundError,
             get_main_paper_pdf,
             get_proceedings_paper_pdf,
+            resolve_pdf_edit_mirror_target,
         )
         from scholaraio.services.system_open import (
             DefaultApplicationOpenError,
             open_with_default_application,
+            open_wsl_windows_file,
         )
 
         if not self.native_pdf_open_enabled:
@@ -513,7 +549,17 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 pdf_path = get_main_paper_pdf(self.cfg, paper_id)
             else:
                 pdf_path = get_proceedings_paper_pdf(self.cfg, paper_id)
-            open_with_default_application(pdf_path.resolve())
+            if self.pdf_edit_mirror_service is not None:
+                resolution = resolve_pdf_edit_mirror_target(self.cfg, source, paper_id)
+                if resolution.target is None:
+                    raise LibraryPaperNotFoundError(paper_id)
+                prepared = self.pdf_edit_mirror_service.prepare_for_open(resolution.target)
+                if not prepared.launchable:
+                    message = str(prepared.status.get("message") or "A safe synchronized PDF mirror is unavailable")
+                    raise DefaultApplicationOpenError(message)
+                open_wsl_windows_file(prepared.mirror_path)
+            else:
+                open_with_default_application(pdf_path.resolve())
         except LibraryPaperNotFoundError:
             self._send_error_json(
                 HTTPStatus.NOT_FOUND,
@@ -566,10 +612,27 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         self._reject_write()
 
 
+class LibraryViewHTTPServer(ThreadingHTTPServer):
+    """HTTP server that owns and stops its PDF synchronization monitor."""
+
+    pdf_edit_mirror_service: PdfEditMirrorService | None = None
+
+    def server_close(self) -> None:
+        service = self.pdf_edit_mirror_service
+        self.pdf_edit_mirror_service = None
+        try:
+            if service is not None:
+                service.stop()
+        finally:
+            super().server_close()
+
+
 def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
     """Create the local, library-read-only HTTP server."""
 
-    from scholaraio.services.system_open import default_application_open_capability
+    from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
+    from scholaraio.services.pdf_edit_mirror import PdfEditMirrorService
+    from scholaraio.services.system_open import DefaultApplicationOpenError, default_application_open_capability
 
     static_dir = _static_dir()
 
@@ -582,6 +645,22 @@ def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: in
     host_is_loopback = _is_loopback_host(host)
     host_capability = default_application_open_capability()
     ConfiguredHandler.native_pdf_open_enabled = host_is_loopback and host_capability.enabled
+    mirror_service = None
+    if ConfiguredHandler.native_pdf_open_enabled and host_capability.target == "windows":
+        try:
+            mirror_service = PdfEditMirrorService.for_wsl(
+                cfg,
+                resolver=lambda record: resolve_pdf_edit_mirror_target(
+                    cfg,
+                    record.library_kind,
+                    record.paper_id,
+                    record=record,
+                ),
+            )
+        except (DefaultApplicationOpenError, OSError, sqlite3.Error) as exc:
+            _ui(f"WARNING: WSL PDF edit mirror is unavailable: {exc}")
+            ConfiguredHandler.native_pdf_open_enabled = False
+            host_capability = type(host_capability)(False, None, "WSL PDF edit mirror could not be initialized.")
     if not host_is_loopback:
         reason = "Native PDF launch is available only when the GUI binds to a loopback host."
     elif not host_capability.enabled:
@@ -589,6 +668,7 @@ def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: in
     else:
         reason = ""
     ConfiguredHandler.native_pdf_open_reason = reason
+    ConfiguredHandler.pdf_edit_mirror_service = mirror_service
     if ConfiguredHandler.native_pdf_open_enabled:
         ConfiguredHandler.pdf_delivery = {
             "mode": "native",
@@ -596,6 +676,8 @@ def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: in
             "label": "Open in default viewer",
             "reason": "",
         }
+        if mirror_service is not None:
+            ConfiguredHandler.pdf_delivery["sync"] = "automatic"
     else:
         ConfiguredHandler.pdf_delivery = {
             "mode": "download",
@@ -603,7 +685,14 @@ def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: in
             "label": "Download PDF",
             "reason": reason,
         }
-    return ThreadingHTTPServer((host, int(port)), ConfiguredHandler)
+    try:
+        server = LibraryViewHTTPServer((host, int(port)), ConfiguredHandler)
+    except OSError:
+        if mirror_service is not None:
+            mirror_service.stop()
+        raise
+    server.pdf_edit_mirror_service = mirror_service
+    return server
 
 
 def serve_library_view(
