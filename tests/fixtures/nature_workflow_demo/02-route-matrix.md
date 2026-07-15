@@ -14,7 +14,7 @@ a broad Nature/high-impact academic workflow collection.
 | Full-paper bilingual reader or source-grounded Markdown reader | `nature-reader` | `/show` + `/translate` |
 | Reviewer response, rebuttal, major/minor revision letter | `nature-response` | `/review-response` |
 | Paper to Chinese journal-club PPT or academic presentation deck | `nature-paper2ppt` | `/show` or `/paper-guided-reading`, then `/document` |
-| Academic search, citation verification, MeSH strategy, reference management | `nature-academic-search` | `/search`, `/websearch`, `/citation-check`, `/export` |
+| Academic search, citation verification, MeSH strategy, reference management | `nature-academic-search` | `/search`, host-native web search, `/citation-check`, `/export` |
 
 The bridge should not require a submission package unless the user explicitly
 asks for one.

@@ -26,7 +26,7 @@ import yaml
 from scholaraio.core.config import Config, load_config
 from scholaraio.providers.mineru import check_server as check_mineru_server
 from scholaraio.providers.paper2any import Paper2AnyError, list_paper2any_tools, resolve_paper2any_mcp_url
-from scholaraio.providers.webtools import check_webextract_service, check_websearch_service
+from scholaraio.providers.webtools import check_webextract_service
 
 # ============================================================================
 #  Bilingual strings
@@ -55,7 +55,6 @@ _S: dict[str, dict[Lang, str]] = {
     "contact_email": {"en": "Contact email", "zh": "联系邮箱"},
     "s2_key": {"en": "Semantic Scholar API key", "zh": "Semantic Scholar API key"},
     "zotero_key": {"en": "Zotero API key", "zh": "Zotero API key"},
-    "websearch": {"en": "Web search", "zh": "Web search"},
     "webextract": {"en": "Web extract", "zh": "Web extract"},
     "paper2any": {"en": "Paper2Any", "zh": "Paper2Any"},
     "directories": {"en": "Directories", "zh": "目录结构"},
@@ -546,24 +545,6 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
                 t("optional_zotero_unset", lang),
             )
         )
-
-    websearch_detail = _optional_webtool_detail(
-        cfg,
-        section_name="websearch",
-        service_name="GUILessBingSearch",
-        default_base_url="http://127.0.0.1:8765",
-        default_mcp_tool="search_bing",
-        env_transport="WEBSEARCH_TRANSPORT",
-        env_base_url="WEBSEARCH_URL",
-        env_mcp_urls=("WEBSEARCH_MCP_URL", "GUILESS_BING_SEARCH_MCP_URL"),
-        env_mcp_tool="WEBSEARCH_MCP_TOOL",
-        env_api_keys=("WEBSEARCH_API_KEY", "GUILESS_BING_SEARCH_API_KEY"),
-        command="scholaraio websearch",
-        start_hint="python third_party/GUILessBingSearch/guiless_bing_search.py",
-        checker=check_websearch_service,
-        lang=lang,
-    )
-    results.append(CheckResult(t("websearch", lang), True, websearch_detail))
 
     webextract_detail = _optional_webtool_detail(
         cfg,
@@ -1252,13 +1233,7 @@ ingest:
   mineru_enable_table: true           # only effective for pipeline / vlm
   abstract_llm_mode: verify # off | fallback | verify
 
-# Optional external web tools. Prefer MCP endpoints for agent workflows.
-websearch:
-  transport: mcp
-  mcp_url: http://127.0.0.1:8765/mcp
-  api_key: null        # optional bearer token -> config.local.yaml or env WEBSEARCH_API_KEY
-  mcp_tool: search_bing
-
+# Optional rendered web extraction for URL ingestion.
 webextract:
   transport: mcp
   mcp_url: http://127.0.0.1:8766/mcp

@@ -14,7 +14,7 @@ map, not a replacement for the upstream skills.
 | `nature-reader` | Full-paper bilingual Markdown reader with source anchors, figure/table grounding, and no summary-only degradation. | Nature reader, full markdown, paper md, 原文对照, 图文对应, 全文翻译. | `/show` + `/translate`. |
 | `nature-response` | Point-by-point reviewer response letters with comment triage, action mapping, and risk checks. | response to reviewers, rebuttal letter, major revision, 审稿意见回复. | `/review-response`. |
 | `nature-paper2ppt` | Chinese PPTX decks from scientific papers for journal club, group meeting, or academic presentation. | paper PPT, journal club, paper to slides, paper presentation, 组会PPT. | `/show` or `/paper-guided-reading` for evidence, then `/document`. |
-| `nature-academic-search` | Multi-source literature search, citation verification, MeSH strategy, citation-file management, and reference management. | search papers, academic search, literature search, verify DOI, reference management. | `/search`, `/websearch`, `/citation-check`, `/export`. |
+| `nature-academic-search` | Multi-source literature search, citation verification, MeSH strategy, citation-file management, and reference management. | search papers, academic search, literature search, verify DOI, reference management. | `/search`, host-native web search, `/citation-check`, `/export`. |
 
 ## Route Principles
 

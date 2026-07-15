@@ -53,7 +53,6 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_insights = cli_mod.cmd_insights
     cmd_migrate = cli_mod.cmd_migrate
     cmd_translate = cli_mod.cmd_translate
-    cmd_websearch = cli_mod.cmd_websearch
     cmd_webextract = cli_mod.cmd_webextract
     cmd_paper2any = cli_mod.cmd_paper2any
     cmd_backup = cli_mod.cmd_backup
@@ -671,12 +670,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Overwrite existing PDF or force pipeline processing"
     )
     p_arxiv_fetch.add_argument("--dry-run", action="store_true", help="Preview planned actions")
-
-    # --- websearch ---
-    p_web = sub.add_parser("websearch", help="Real-time web search via GUILessBingSearch")
-    p_web.set_defaults(func=cmd_websearch)
-    p_web.add_argument("query", nargs="+", help="Search query terms")
-    p_web.add_argument("--count", type=int, default=10, help="Number of results (default: 10)")
 
     # --- webextract ---
     p_wext = sub.add_parser("webextract", help="Extract web content with qt-web-extractor")

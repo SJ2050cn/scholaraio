@@ -27,7 +27,7 @@ Do not use this skill when:
 ### 1. Confirm the source shape
 
 - If the user already provides URL(s), go straight to `scholaraio ingest-link`
-- If the user only has a topic but no URL, discover URLs first through external web search, then ingest selected results
+- If the user only has a topic but no URL, discover URLs first through the host agent's native web search, then ingest selected results
 
 ### 2. Use the CLI entrypoint
 

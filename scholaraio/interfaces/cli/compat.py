@@ -87,7 +87,6 @@ cmd_enrich_toc = _enrich_cli.cmd_enrich_toc
 cmd_enrich_l3 = _enrich_cli.cmd_enrich_l3
 _toc_success_message = _enrich_cli._toc_success_message
 _run_batch_enrich = _enrich_cli._run_batch_enrich
-cmd_websearch = _web_cli.cmd_websearch
 cmd_webextract = _web_cli.cmd_webextract
 cmd_paper2any = _paper2any_cli.cmd_paper2any
 _terminal_preview = _web_cli._terminal_preview
@@ -220,7 +219,6 @@ __all__ = [
     "cmd_usearch",
     "cmd_vsearch",
     "cmd_webextract",
-    "cmd_websearch",
     "cmd_ws",
     "load_config",
     "main",

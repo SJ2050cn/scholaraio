@@ -336,47 +336,6 @@ class TestCliHelpLocalization:
         assert "tools" in actions
 
 
-class TestWebsearchCli:
-    def test_cmd_websearch_exits_on_service_unavailable(self, monkeypatch):
-        import scholaraio.providers.webtools as webtools
-
-        messages: list[str] = []
-        monkeypatch.setattr(cli, "ui", messages.append)
-
-        def fake_search_and_display(*args, **kwargs):
-            raise webtools.ServiceUnavailableError("service down")
-
-        monkeypatch.setattr(webtools, "search_and_display", fake_search_and_display)
-
-        args = Namespace(query=["test"], count=3)
-
-        with pytest.raises(SystemExit) as exc:
-            cli.cmd_websearch(args, SimpleNamespace())
-
-        assert exc.value.code == 1
-        assert any("Error: service down" in message for message in messages)
-        assert any("GUILessBingSearch" in message for message in messages)
-
-    def test_cmd_websearch_does_not_repeat_success_summary(self, monkeypatch):
-        import scholaraio.providers.webtools as webtools
-
-        messages: list[str] = []
-        monkeypatch.setattr(cli, "ui", messages.append)
-
-        monkeypatch.setattr(
-            webtools,
-            "search_and_display",
-            lambda *args, **kwargs: [
-                webtools.WebSearchResult(title="OpenAI", link="https://openai.com", snippet="AI research")
-            ],
-        )
-
-        args = Namespace(query=["openai"], count=1)
-        cli.cmd_websearch(args, SimpleNamespace())
-
-        assert messages == []
-
-
 class TestWebextractCli:
     def test_cmd_webextract_exits_when_result_contains_error_without_text(self, monkeypatch):
         import scholaraio.providers.webtools as webtools

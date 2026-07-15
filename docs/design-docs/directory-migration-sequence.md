@@ -112,7 +112,7 @@ release gate and `docs/guide/agent-reference.md` for the current contract.
 - `scholaraio/providers/uspto_ppubs.py` now owns the USPTO PPUBS session/search/PDF-export client; `scholaraio.uspto_ppubs` remains a module alias so existing imports and monkeypatches still target the same implementation
 - `scholaraio/services/ingest/pipeline.py` now exposes the ingest pipeline compatibility facade, and routes inbox/pending/proceedings defaults through small accessor helpers (`_inbox_dir`, `_pending_dir`, `_proceedings_dir`, etc.), with fresh queue defaults under `data/spool/`
 - `scholaraio/services/backup.py` plus `scholaraio/core/config.py` confirm backup still defaults to syncing `data/`, not the full runtime root
-- `scholaraio/providers/webtools.py` forms the external-adapter seam; `websearch` supports both legacy HTTP `/search` and GUILessBingSearch MCP `search_bing`, while `webextract` supports both legacy HTTP `/extract` and qt-web-extractor MCP `fetch_url`
+- `scholaraio/providers/webtools.py` forms the external-adapter seam; the current default product exposes rendered extraction through both legacy HTTP `/extract` and qt-web-extractor MCP `fetch_url`, while the old search adapter remains an unregistered compatibility implementation
 - `scholaraio/toolref/paths.py:9-20` now follows `cfg.toolref_root`; fresh instances default to `data/libraries/toolref/`, while existing legacy `data/toolref/` remains auto-detected
 - `scholaraio/toolref/_legacy_snapshot.py:111-130` preserves the same `cfg.toolref_root` behavior in a parallel legacy implementation
 - `scholaraio/stores/citation_styles.py:253-255` now follows `cfg.citation_styles_dir`; fresh instances default to `data/libraries/citation_styles/`, while existing legacy `data/citation_styles/` remains auto-detected
@@ -852,7 +852,7 @@ Recommended order:
 
 Additional constraint for `webtools`:
 
-- preserve current user-facing capability names such as `websearch`, `webextract`, and `ingest-link`
+- preserve current user-facing capability names such as `webextract` and `ingest-link`
 - but move the backend contract toward a provider boundary so the same logical capability can later be backed either by the current HTTP services or by an MCP-style transport without rewriting the CLI/skill surface first
 - do not treat the current skill packaging or localhost HTTP defaults as the long-term architectural contract
 
@@ -956,7 +956,7 @@ Implementation status (2026-04-20):
 - `refetch` command handling has moved to `scholaraio.interfaces.cli.refetch`; `scholaraio.cli.cmd_refetch` remains the parser-facing callable
 - enrichment command handling (`enrich-toc`, `enrich-l3`) has moved to `scholaraio.interfaces.cli.enrich`; `scholaraio.cli.cmd_enrich_*` and existing enrichment helper aliases remain available
 - arXiv command handling (`arxiv search`, `arxiv fetch`) has moved to `scholaraio.interfaces.cli.arxiv`; the corresponding `scholaraio.cli.cmd_arxiv_*` callables remain parser-facing aliases
-- web command handling (`websearch`, `webextract`) has moved to `scholaraio.interfaces.cli.web`; `scholaraio.cli.cmd_web*` and the existing `_terminal_preview` helper alias remain available
+- rendered web command handling (`webextract`) has moved to `scholaraio.interfaces.cli.web`; the `_terminal_preview` helper alias remains available
 - `explore` command handling has moved to `scholaraio.interfaces.cli.explore`; `scholaraio.cli.cmd_explore` and the existing `_explore_root` helper alias remain available
 - `ingest-link` command handling has moved to `scholaraio.interfaces.cli.ingest_link`; `scholaraio.cli.cmd_ingest_link` and existing ingest-link helper aliases remain available
 - patent command handling (`patent-fetch`, `patent-search`) has moved to `scholaraio.interfaces.cli.patent`; the corresponding `scholaraio.cli.cmd_patent_*` callables remain parser-facing aliases

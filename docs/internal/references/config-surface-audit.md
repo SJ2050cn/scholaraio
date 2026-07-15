@@ -2,9 +2,15 @@
 
 Status: Historical audit, updated for the current compatibility window
 
-Last Updated: 2026-04-23
+Last Updated: 2026-07-15
 
 Scope: repo-wide audit of hardcoded runtime paths, operational knobs, and external-service defaults that are candidates for formal configuration.
+
+2026-07-15 compatibility note:
+
+- external web discovery now uses the host agent's native search capability
+- the former search skill, CLI command, default MCP registration, setup check, and generated config block have been removed
+- `Config.websearch` and the low-level provider adapter remain compatibility-only; older recommendations below to expose them through the CLI or skill layer are superseded
 
 2026-04-23 status note:
 

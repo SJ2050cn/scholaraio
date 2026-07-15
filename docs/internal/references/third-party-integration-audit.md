@@ -19,7 +19,7 @@ Status is intentionally conservative:
 | Integration / Surface | Category | Status | Verification Path / Test Evidence | Observed Result / Config & Version Boundaries |
 | :--- | :--- | :--- | :--- | :--- |
 | **qt-web-extractor (HTTP & MCP)** | Web / Agent | **partially-reviewed** | `extract_web`, `_clean_table_code_fences`, `tests/test_webtools_source.py`, fixture pair under `tests/fixtures/` | Sanitizer regression is covered for malformed table-cell code fences and adjacent standalone code blocks. Live daemon canary evidence is still required before this surface is promoted to `good`. Boundaries: `webextract.transport` (HTTP/MCP), `webextract.base_url`, `webextract.mcp_url`, `webextract.api_key`. |
-| **GUILessBingSearch** | Web / Agent | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
+| **GUILessBingSearch compatibility adapter** | Web / Agent | **not a default surface** | `tests/test_webtools_source.py` | Retained only for existing Python/config callers. ScholarAIO no longer registers a search skill, CLI command, setup check, generated config block, or default MCP server; agents use host-native web search. |
 | **MinerU Local API** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **MinerU Cloud CLI** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **Paper2Any MCP Sidecar** | Parsing/MCP | **not-yet-reviewed** | N/A | Excluded from current triage phase. |

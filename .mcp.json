@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "web-search": {
-      "type": "http",
-      "url": "http://127.0.0.1:8765/mcp"
-    },
     "web-extractor": {
       "type": "http",
       "url": "http://127.0.0.1:8766/mcp"
