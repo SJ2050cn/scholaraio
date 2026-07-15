@@ -26,7 +26,7 @@ pip install -e ".[full]"
 scholaraio setup
 ```
 
-`scholaraio setup check` is the companion diagnostic command. It reports both the core setup state and optional advanced items such as Semantic Scholar / Zotero API keys, websearch/webextract endpoints, and Paper2Any sidecar readiness. Current setup guidance prefers MinerU first whenever a MinerU path is available.
+`scholaraio setup check` is the companion diagnostic command. It reports both the core setup state and optional advanced items such as Semantic Scholar / Zotero API keys, the rendered web-extraction endpoint, and Paper2Any sidecar readiness. Current setup guidance prefers MinerU first whenever a MinerU path is available.
 
 Then start your agent in the repository root:
 
@@ -42,12 +42,12 @@ Then start your agent in the repository root:
 
 This mode is best when you want the full project context, not just the ScholarAIO skills.
 
-The bundled `.mcp.json` lists the optional webtools MCP servers for hosts that
-can consume project-scoped MCP JSON. Codex currently uses its own MCP registry,
-so register the same servers explicitly when you want Codex to call them:
+The bundled `.mcp.json` lists optional rendered-extraction and Paper2Any MCP
+servers for hosts that can consume project-scoped MCP JSON. Codex currently
+uses its own MCP registry, so register the extractor explicitly only when URL
+ingestion needs rendered content that host-native reading cannot provide:
 
 ```bash
-codex mcp add web-search --url http://127.0.0.1:8765/mcp
 codex mcp add web-extractor --url http://127.0.0.1:8766/mcp
 ```
 

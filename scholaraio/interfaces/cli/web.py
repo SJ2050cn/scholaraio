@@ -1,4 +1,4 @@
-"""Web search and extraction CLI command handlers."""
+"""Rendered web extraction CLI command handlers."""
 
 from __future__ import annotations
 
@@ -15,29 +15,6 @@ def _ui(msg: str = "") -> None:
         log_ui(msg)
         return
     cli_mod.ui(msg)
-
-
-def cmd_websearch(args: argparse.Namespace, cfg) -> None:
-    """Real-time web search (Bing via GUILessBingSearch)."""
-    from scholaraio.providers import webtools
-
-    query = " ".join(args.query)
-    count = args.count
-
-    try:
-        results = webtools.search_and_display(query, count=count, cfg=cfg)
-    except webtools.ServiceUnavailableError as e:
-        _ui(f"Error: {e}")
-        _ui("Hint: Make sure the GUILessBingSearch service is running")
-        _ui("  Install: https://github.com/wszqkzqk/GUILessBingSearch")
-        _ui("  Start: python guiless_bing_search.py")
-        sys.exit(1)
-    except webtools.WebSearchError as e:
-        _ui(f"Search failed: {e}")
-        sys.exit(1)
-
-    if not results:
-        return
 
 
 def _terminal_preview(text: str, *, max_chars: int) -> tuple[str, bool]:

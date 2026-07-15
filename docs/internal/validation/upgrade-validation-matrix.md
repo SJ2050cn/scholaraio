@@ -536,7 +536,6 @@ Recommended canaries:
 | `arxiv` | real search or fetch against arXiv |
 | `explore fetch` | real OpenAlex pull on a tiny query |
 | `refetch` / `backfill-abstract` | at least one real metadata lookup |
-| `websearch` | one real search |
 | `webextract` / `ingest-link` | one real rendered-page extraction |
 | `patent-search` / `patent-fetch` | one real USPTO search and one fetch when a reachable sample exists |
 | `translate` | one real LLM-backed translation |
@@ -601,7 +600,7 @@ Every top-level CLI surface must be explicitly classified in the release record,
 | `proceedings` | local helper or searchable local | distinguish helper-path validation from searchable proceedings validation |
 | `toolref list/show/search/use` | deterministic local | must resolve current version and return real docs from a local toolref store |
 | `toolref fetch` | provider-backed or repo/integration canary | run when tool-doc fetching behavior is part of the claimed release surface and the required source/network access is available |
-| `arxiv`, `websearch`, `webextract`, `ingest-link`, `patent-search`, `patent-fetch` | provider-backed canary | run when network and required services are available |
+| `arxiv`, `webextract`, `ingest-link`, `patent-search`, `patent-fetch` | provider-backed canary | run when network and required services are available |
 | `translate`, `enrich-toc`, `enrich-l3` | provider-backed canary | run when LLM backend is available |
 | `diagram --from-ir` | deterministic local | should render from a prepared IR fixture |
 | `diagram --from-text` or paper-driven generation | provider-backed canary | run when LLM backend is available |

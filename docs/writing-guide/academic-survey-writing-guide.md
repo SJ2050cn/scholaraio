@@ -18,7 +18,7 @@
 
 ### 1.1 检索策略（三轮检索）
 - **本地知识库**：`usearch`融合检索 + `search-author`关键作者
-- **互联网补充**：`websearch`最新进展 + 第三方深度分析
+- **互联网补充**：宿主 Agent 原生网页搜索获取最新进展 + 第三方深度分析
 - **arXiv预印本**：`arxiv`未正式发表的奠基性工作
 
 ### 1.2 核心文献识别
@@ -303,7 +303,7 @@ lualatex -interaction=nonstopmode main.tex
 ```bash
 # 文献检索
 scholaraio usearch "<关键词>" --top 20
-scholaraio websearch "<关键词>" --count 15
+# 使用宿主 Agent 的原生网页搜索检索关键词，并保留来源链接与访问日期
 scholaraio arxiv "<标题>"
 
 # 文献管理

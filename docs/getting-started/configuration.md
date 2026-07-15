@@ -129,18 +129,13 @@ Recommended first-run checklist:
 4. Dry-run first:
    `scholaraio backup run lab --dry-run`
 
-### Web Search And Extraction
+### Rendered Web Extraction
 
-For agent workflows, prefer MCP endpoints for both live search and rendered
-web/PDF extraction:
+Use the host agent's native web search and URL reading for ordinary discovery.
+Configure the optional extractor only when URL ingestion requires JavaScript-
+rendered or PDF content that native reading cannot provide:
 
 ```yaml
-websearch:
-  transport: mcp
-  mcp_url: http://127.0.0.1:8765/mcp
-  api_key: "optional-token"
-  mcp_tool: search_bing
-
 webextract:
   transport: mcp
   mcp_url: http://127.0.0.1:8766/mcp
@@ -151,11 +146,6 @@ webextract:
 The legacy HTTP endpoints are still supported:
 
 ```yaml
-websearch:
-  transport: http
-  base_url: http://127.0.0.1:8765
-  api_key: "optional-token"
-
 webextract:
   transport: http
   base_url: http://127.0.0.1:8766

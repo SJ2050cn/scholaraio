@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Windows setup-check console compatibility** ([#113](https://github.com/ZimoLiao/scholaraio/pull/113)): Replaced non-cp1252 status symbols in the default English `setup check` output so Windows consoles no longer raise `UnicodeEncodeError` during final verification.
 - **Webextract Markdown table-cell cleanup** ([#110](https://github.com/ZimoLiao/scholaraio/pull/110)): Sanitized malformed block-level code fences emitted inside `qt-web-extractor` table cells before HTTP/MCP extraction results reach `webextract` and ingest consumers, while preserving standalone fenced code blocks and pipe characters inside code-cell content.
 
+### Removed
+
+- **Default external web-search surface**: Removed the implicitly matched `websearch` skill, CLI command, default MCP registration, setup check, configuration template, and cross-skill routes. Live discovery now uses the host agent's native web search; `webextract` remains narrowly scoped to rendered content and `ingest-link` persistence.
+
 ## [1.5.0] — 2026-05-24
 
 ### Added

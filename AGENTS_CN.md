@@ -44,9 +44,9 @@ canonical skill 源是 `.claude/skills/`。其他 agent 发现入口都只是它
 
 代表性 skills：
 
-- 核心科研：`search`、`show`、`ingest`、`workspace`、`audit`、`translate`
+- 核心科研：`search`、`show`、`ingest`、`ingest-link`、`workspace`、`audit`、`translate`
 - 写作：`academic-writing`、`nature-workflow`、`literature-review`、`paper-guided-reading`、`paper-writing`、`citation-check`、`writing-polish`、`review-response`、`research-gap`、`poster`、`technical-report`
-- 输出与工具：`draw`、`document`、`websearch`、`webextract`、`scientific-runtime`、`scientific-tool-onboarding`
+- 输出与工具：`draw`、`document`、`scientific-runtime`、`scientific-tool-onboarding`
 
 如果一个流程已经长成可复用 playbook，就把它做成 skill，而不是继续膨胀这个文件。
 
@@ -115,7 +115,7 @@ breaking cleanup generation 已移除 `scholaraio.index`、`scholaraio.workspace
 
 这些 wrapper 都应保持轻量，不要把每个 wrapper 都做成第二份大手册。
 
-可选 webtools MCP server 已列在 `.mcp.json`，供支持 project MCP JSON 的宿主使用。Codex 使用自己的 MCP registry；注册 `web-search` / `web-extractor` 的命令见 `docs/guide/webtools-integration.md`。
+可选 webtools MCP server 已列在 `.mcp.json`，供支持 project MCP JSON 的宿主使用。Codex 使用自己的 MCP registry；可选渲染提取器的注册命令见 `docs/guide/webtools-integration.md`。
 
 ## 深入参考
 

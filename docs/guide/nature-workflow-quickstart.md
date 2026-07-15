@@ -77,7 +77,7 @@ Copying only `SKILL.md` is not enough.
 | Full-paper reader | `nature-reader` | `/show` + `/translate` |
 | Reviewer response | `nature-response` | `/review-response` |
 | Paper-to-PPT | `nature-paper2ppt` | `/show` or `/paper-guided-reading`, then `/document` |
-| Academic search | `nature-academic-search` | `/search`, `/websearch`, `/citation-check`, `/export` |
+| Academic search | `nature-academic-search` | `/search`, host-native web search, `/citation-check`, `/export` |
 
 ## Example Prompts
 

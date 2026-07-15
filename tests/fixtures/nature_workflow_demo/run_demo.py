@@ -118,7 +118,7 @@ ROUTES = (
     Route(
         upstream="nature-academic-search",
         keywords=("nature-focused academic search", "verify doi", "reference exports", "mesh strategy"),
-        fallback="/search + /websearch + /citation-check + /export",
+        fallback="/search + host-native web search + /citation-check + /export",
         next_action="Load upstream skills/nature-academic-search/SKILL.md and choose the search workflow.",
         guardrails=("Use source-specific search limits.", "Verify DOI and citation metadata before export."),
     ),

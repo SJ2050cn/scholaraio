@@ -84,7 +84,7 @@ When the original upstream skill is not available:
 - citation/search/export -> `/search` + `/citation-check` + `/export`
 - paper reading/translation -> `/show` + `/translate`
 - paper-to-PPT or document packaging -> `/document`
-- literature search -> `/search` or `/websearch`
+- literature search -> `/search`, plus host-native web search when current or external coverage is required
 
 Use fallbacks conservatively. Preserve upstream-style guardrails such as
 non-invention, source grounding, explicit missing inputs, and final-output
