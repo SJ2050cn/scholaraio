@@ -6,6 +6,10 @@ description: Use when the user needs help choosing or organizing an academic-wri
 
 Route academic-writing requests to the right specialized skill with minimal overlap.
 
+## Capability Routing
+
+**当前 Agent 原生能力优先，但必须先做能力检查**：按任务所需能力和最终交付物路由，不按 Agent 品牌路由。若当前会话实际提供的原生能力能满足任务，就由当前使用的 Agent 原生能力完成检索后的理解、论文阅读、学术写作、演示结构和逐页内容。只有用户需要可下载、可复现的 `DOCX/PPTX/XLSX` 文件时才接 `/document`；不要为普通写作或普通 PPT 自动启动外部生成服务。
+
 ## Purpose
 
 This skill is the **entry point** for users who know what they want to produce, but do not know which writing workflow to use.

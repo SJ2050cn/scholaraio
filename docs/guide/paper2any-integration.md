@@ -6,6 +6,12 @@ ScholarAIO integrates [OpenDCAI/Paper2Any](https://github.com/OpenDCAI/Paper2Any
 2. a lightweight ScholarAIO MCP sidecar at `http://127.0.0.1:8770/mcp`;
 3. optional access to Paper2Any's own FastAPI backend at `http://127.0.0.1:8000`.
 
+Paper2Any is an isolated, explicit opt-in extension. The current agent's native
+capabilities remain the default for ordinary web research, paper reading,
+writing, diagrams, and presentation generation. Paper2Any must not be promoted
+to a default path until a fixed-corpus comparison records accuracy, editability,
+layout quality, latency, cost, setup burden, and degradation behavior.
+
 ## Configuration
 
 ```yaml
@@ -54,7 +60,13 @@ For agent-managed full runtime preparation, add:
 scholaraio paper2any setup --install-runtime
 ```
 
-This creates the upstream checkout under `data/runtime/extensions/paper2any/Paper2Any` and, when requested, installs upstream requirements into `data/runtime/extensions/paper2any/.venv`. The dependency details stay in Paper2Any's own requirements files; the user-facing ScholarAIO config stays small.
+This creates the upstream checkout under `data/runtime/extensions/paper2any/Paper2Any` and, when requested, installs the upstream `requirements-base.txt` and `requirements-paper.txt` into `data/runtime/extensions/paper2any/.venv`. If either manifest is absent, setup fails closed and asks you to update or select a supported checkout instead of reporting an empty runtime as ready. The dependency details stay in Paper2Any's own requirements files; the user-facing ScholarAIO config stays small.
+
+`--install-runtime` installs Python dependencies only. Paper2Any's current
+upstream installation guide lists workflow-dependent system tools such as
+LibreOffice, Inkscape, Poppler, FFmpeg, wkhtmltopdf, and Tectonic; install only
+the tools required by the workflow you intend to benchmark. ScholarAIO does not
+silently modify the host OS.
 
 Start the MCP sidecar:
 
@@ -133,7 +145,8 @@ Backend workflow families:
 
 ## Agent MCP Registration
 
-The project `.mcp.json` includes the sidecar:
+The project `.mcp.json` intentionally does not register Paper2Any. Register the
+sidecar explicitly only for a Paper2Any request or fixed-corpus evaluation:
 
 ```json
 {

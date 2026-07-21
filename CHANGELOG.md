@@ -124,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Docs consistency**: README, README_CN, AGENTS, and CLAUDE now describe the current parser stack and setup behavior consistently
 - **arXiv ingest edge cases**: `scholaraio.sources.arxiv` no longer makes `bs4` a transitive hard dependency for normal metadata flows, and old-style arXiv IDs like `hep-th/9901001` now create parent directories correctly during PDF download
 - **Scientific runtime docs compatibility**: toolref runtime behavior, scientific skills, and published setup/docs metadata now match the refactored `toolref` facade and current public CLI/package surface
-- **Optional dependency guidance**: missing-dependency messages and `setup check` now consistently point users to `scholaraio[import]`, `scholaraio[pdf]`, `scholaraio[office]`, and `scholaraio[draw]` instead of raw leaf packages
+- **Optional dependency guidance**: missing-dependency messages and `setup check` point Python dependencies to `scholaraio[import]`, `scholaraio[pdf]`, and `scholaraio[office]`; Graphviz and Inkscape remain explicit system-tool checks instead of a dependency-free `draw` extra
 - **Translate / enrich CLI feedback and recovery**: `translate` now reports chunk-level progress, persists per-chunk state in `.translate_{lang}/`, resumes unfinished work safely, and avoids writing fake success output when every chunk fails; `enrich-toc` now reports start/success/failure with extracted TOC counts for single-paper runs
 - **Workspace removal and refetch status accuracy**: `ws remove` now falls back to exact workspace `dir_name` matching when registry lookup misses, and `refetch` no longer reports spurious updates when API enrichment returns no authoritative data
 

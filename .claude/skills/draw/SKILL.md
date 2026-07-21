@@ -5,16 +5,20 @@ description: Use when the user wants diagrams, flowcharts, architecture visuals,
 
 # 绘图工具（Text → IR → Diagram）
 
+## Capability Routing
+
+**当前 Agent 原生能力优先，但必须先做能力检查**：按所需输出格式和可复现性路由，不按 Agent 品牌路由。若当前会话实际提供 Mermaid、DOT、SVG 或图片生成能力，就由当前使用的 Agent 原生能力完成普通流程图、架构图、关系图和演示示意图。只有需要从 ScholarAIO 论文库提取结构、保存 IR、批量复现或生成可继续编辑的 drawio 文件时，才调用 `scholaraio diagram`。不要为普通绘图安装额外 Python 绘图库。
+
 `draw` skill 的核心工作流是**两步式**：先将文字描述或论文内容转换为统一的中间表示（IR），再将 IR 渲染为多种可编辑格式。
 
 ## 后端选择速查表
 
 | 需求 | 推荐后端 | 输出格式 | 特点 |
 |------|----------|----------|------|
-| 快速画流程图/架构图，零依赖预览 | **Mermaid** | `.mermaid` / 嵌入 Markdown | 文本即代码，GitHub/Obsidian/Claude Code 原生渲染 |
+| 快速画流程图/架构图，零依赖预览 | **Mermaid** | `.mermaid` / 嵌入 Markdown | 文本即代码，常见 Markdown 宿主可直接渲染 |
 | 论文插图，LaTeX Beamer 直插 | **Graphviz SVG** | `.svg` + `.dot` 源码 | 矢量图，可版本控制，`<?xml>` 级精确 |
 | 在线协作/精调布局 | **drawio** | `.drawio` XML | 导入 [diagrams.net](https://app.diagrams.net) 后手动拖拽调整 |
-| 自定义实验示意图、信息图 | **cli-anything-inkscape** | `.svg` | Python API 自由绘制形状、文字、渐变 |
+| 自定义实验示意图、信息图 | **当前 Agent 直接生成 SVG/图片** | `.svg` / `.png` | 普通场景零新增 Python 依赖 |
 | 程序化批处理、版本控制 | **Graphviz DOT** | `.dot` | 纯文本，Diff 友好，任何平台可编译 |
 
 ## 工作流架构
@@ -80,35 +84,7 @@ flowchart TD
 ```
 ```
 
-Claude Code 预览自动渲染，无需任何外部工具。
-
-### 方式 4：cli-anything-inkscape 自定义矢量图
-
-适合需要精确控制每个像素的信息图、实验装置示意图。
-
-```python
-from pathlib import Path
-from cli_anything.inkscape.core import (
-    document as doc_mod, shapes as shape_mod,
-    text as text_mod, styles as style_mod, export as export_mod,
-)
-
-SVG = Path("workspace/_system/figures/diagram.svg")
-SVG.parent.mkdir(parents=True, exist_ok=True)
-
-proj = doc_mod.create_document(width=800, height=300, units='px', background='#f8f9fa')
-
-# 添加矩形
-shape_mod.add_rect(proj, x=50, y=100, width=170, height=90, rx=8, ry=8)
-style_mod.set_fill(proj, len(proj['objects']) - 1, "#4A90D9")
-
-# 添加文字
-text_mod.add_text(proj, text="数据输入", x=135, y=148,
-                  font_size=15, font_weight='bold', text_anchor='middle', fill='#ffffff')
-
-# 导出
-export_mod.export_svg(proj, str(SVG), overwrite=True)
-```
+支持 Mermaid 的当前 Agent 宿主可直接预览，无需任何 Python 渲染依赖。
 
 ## 各后端详细用法
 
@@ -193,7 +169,7 @@ scholaraio diagram <paper-id> --format mermaid -o workspace/_system/figures/
 → 若无论文：根据描述生成 IR → Mermaid flowchart
 
 用户说："帮我画一个实验装置示意图"
-→ 用 cli-anything-inkscape Python API 绘制自定义 SVG
+→ 当前 Agent 直接生成可编辑 SVG；只在用户明确需要照片式或插画式结果时使用宿主图片生成能力
 
 用户说："把这个 Mermaid 代码转成 SVG"
 → 解析为 IR → `render_ir(ir, "svg")`

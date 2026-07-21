@@ -60,17 +60,12 @@ office = [
     "python-pptx>=1.0",
     "openpyxl>=3.1",
 ]
-draw = [
-    "cli-anything-inkscape>=1.0.0",
-    "mermaid-py>=0.3",
-]
 full = [
     "scholaraio[embed]",
     "scholaraio[topics]",
     "scholaraio[import]",
     "scholaraio[pdf]",
     "scholaraio[office]",
-    "scholaraio[draw]",
     "modelscope>=1.10",
     "curl-cffi>=0.5",
 ]

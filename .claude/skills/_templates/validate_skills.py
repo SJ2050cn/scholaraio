@@ -29,6 +29,8 @@ BAD_PATH_PATTERNS = [
     re.compile(r"/tmp/[\w\-]+"),
 ]
 
+MAX_SKILL_LINES = 500
+
 
 def check_frontmatter(skill_path: Path) -> list[str]:
     content = skill_path.read_text(encoding="utf-8")
@@ -80,6 +82,13 @@ def check_frontmatter(skill_path: Path) -> list[str]:
 def check_content(skill_path: Path) -> list[str]:
     content = skill_path.read_text(encoding="utf-8")
     issues: list[str] = []
+
+    line_count = len(content.splitlines())
+    if line_count > MAX_SKILL_LINES:
+        issues.append(
+            f"SKILL.md has {line_count} lines; keep the entry workflow at or below {MAX_SKILL_LINES} "
+            "and move conditional detail to references/"
+        )
 
     # 1. Deprecated aliases (word boundary to avoid matching --topic as --top)
     for alias, suggestion in DEPRECATED_ALIASES.items():

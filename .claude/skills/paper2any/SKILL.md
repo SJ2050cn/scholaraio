@@ -1,11 +1,20 @@
 ---
 name: paper2any
-description: Use when the user wants Paper2Any-based paper-to-figure, PPT, poster, video, citation, rebuttal, DrawIO, mindmap, image, PDF-to-PPT, or KB workflows through the ScholarAIO Paper2Any MCP sidecar.
+description: Use when the user explicitly requests Paper2Any or a Paper2Any benchmark for paper-to-figure, PPT, poster, video, DrawIO, PDF-to-PPT, or related workflows through the isolated ScholarAIO sidecar.
 ---
 
 # paper2any - Paper2Any MCP 增强组件
 
 Paper2Any 是外部项目 [OpenDCAI/Paper2Any](https://github.com/OpenDCAI/Paper2Any)。ScholarAIO 不 vendoring 它的代码和依赖；ScholarAIO 只提供一个轻量 MCP sidecar，把 agent 请求转交给真实 Paper2Any checkout 或它自己的 FastAPI 后端。
+
+## 隔离与晋级边界
+
+Paper2Any 是 **isolated extension**，不是 ScholarAIO 或当前 Agent 的默认生成路径。
+
+- 普通网页检索、论文阅读、写作、图表和演示稿按任务能力与交付契约路由，不按 Agent 品牌路由；先检查当前会话实际提供的原生能力，能够满足任务时由当前使用的 Agent 原生能力完成。
+- 只有用户明确要求 Paper2Any，或正在执行 Paper2Any 对比评测时，才运行本 skill；不要为普通 PPT、海报、rebuttal 或图表自动执行 `setup`。
+- checkout、虚拟环境、MCP sidecar、FastAPI 后端和输出目录继续与 ScholarAIO 基础运行时隔离。
+- 在提升为默认或一等能力之前，必须完成 **fixed-corpus** 对比，至少记录事实准确性、可编辑性、版式质量、延迟、成本、安装负担和失败降级行为。
 
 默认外部 checkout 位置：
 
@@ -15,7 +24,7 @@ data/runtime/extensions/paper2any/Paper2Any
 
 ## 使用顺序
 
-1. 一键准备外部 Paper2Any runtime：
+1. 确认用户明确要求 Paper2Any 或本次任务是 fixed-corpus 评测，然后准备外部 Paper2Any runtime：
 
    ```bash
    scholaraio paper2any setup
@@ -28,6 +37,8 @@ data/runtime/extensions/paper2any/Paper2Any
    ```
 
    这个命令会使用 OpenDCAI/Paper2Any 自己的 requirements 在 `data/runtime/extensions/paper2any/.venv` 中准备隔离环境；不要把依赖清单转嫁给非开发者用户。
+
+   当前支持的上游安装契约是 `requirements-base.txt` + `requirements-paper.txt`。任一清单缺失时应停止并提示更新 checkout，不要把空虚拟环境报告为安装成功。这个选项只安装 Python 依赖；Paper2Any 当前文档列出的 LibreOffice、Inkscape、Poppler、FFmpeg、wkhtmltopdf、Tectonic 等系统工具仍需按实际工作流单独准备。
 
 2. 确认 sidecar 是否可用：
 

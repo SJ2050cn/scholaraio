@@ -432,6 +432,55 @@ def test_paper2any_setup_clones_external_checkout_without_installing_deps(monkey
     assert result.actions[-1] == "skip upstream dependency install"
 
 
+def test_paper2any_setup_installs_supported_upstream_manifests(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[1:3] == ["-m", "venv"]:
+            venv_dir = Path(cmd[-1])
+            (venv_dir / "bin").mkdir(parents=True)
+            (venv_dir / "pyvenv.cfg").write_text("home = test\n", encoding="utf-8")
+            (venv_dir / "bin" / "python").write_text("#!/usr/bin/env python\n", encoding="utf-8")
+        return None
+
+    monkeypatch.setattr("scholaraio.providers.paper2any_setup.subprocess.run", fake_run)
+
+    from scholaraio.providers.paper2any_setup import setup_paper2any_runtime
+
+    root = tmp_path / "runtime" / "extensions" / "paper2any" / "Paper2Any"
+    (root / ".git").mkdir(parents=True)
+    for name in ("requirements-base.txt", "requirements-paper.txt"):
+        (root / name).write_text("# upstream manifest\n", encoding="utf-8")
+
+    result = setup_paper2any_runtime(root, install_runtime=True, python="python3")
+
+    runtime_python = str(result.venv_python)
+    assert [runtime_python, "-m", "pip", "install", "-r", str(root / "requirements-base.txt")] in calls
+    assert [runtime_python, "-m", "pip", "install", "-r", str(root / "requirements-paper.txt")] in calls
+
+
+def test_paper2any_setup_fails_closed_when_upstream_manifests_are_missing(monkeypatch, tmp_path: Path) -> None:
+    def fake_run(cmd, **kwargs):
+        if cmd[1:3] == ["-m", "venv"]:
+            venv_dir = Path(cmd[-1])
+            (venv_dir / "bin").mkdir(parents=True)
+            (venv_dir / "pyvenv.cfg").write_text("home = test\n", encoding="utf-8")
+            (venv_dir / "bin" / "python").write_text("#!/usr/bin/env python\n", encoding="utf-8")
+        return None
+
+    monkeypatch.setattr("scholaraio.providers.paper2any_setup.subprocess.run", fake_run)
+
+    from scholaraio.providers.paper2any_setup import Paper2AnySetupError, setup_paper2any_runtime
+
+    root = tmp_path / "runtime" / "extensions" / "paper2any" / "Paper2Any"
+    (root / ".git").mkdir(parents=True)
+    (root / "requirements-base.txt").write_text("# upstream manifest\n", encoding="utf-8")
+
+    with pytest.raises(Paper2AnySetupError, match=r"requirements-paper\.txt"):
+        setup_paper2any_runtime(root, install_runtime=True, python="python3")
+
+
 def test_paper2any_backend_serve_uses_isolated_runtime_and_backend_key(monkeypatch, tmp_path: Path) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 

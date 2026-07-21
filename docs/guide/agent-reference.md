@@ -71,6 +71,23 @@ Project guidance for maintaining skills:
 - if a skill grows into long reference material, split the detail into supporting files and link them from `SKILL.md`
 - if a repo-wide instruction file starts turning into a checklist or operating procedure, move that procedure into a skill instead
 
+### Capability-Based Routing
+
+Shared skills route by the task's required capability and output contract, not
+by the host or Agent brand:
+
+| Route | Use it when |
+|---|---|
+| Current-session native capability | The capability is actually exposed in this session and can complete the one-off reading, reasoning, writing, browsing, or visual task |
+| ScholarAIO core CLI | The task needs library access, provenance, persistent notes, reproducible IR, deterministic Office files, or another tested project contract |
+| Optional sidecar or external extension | The user explicitly requests it, or the native/core route cannot meet a specialized rendering or benchmark contract |
+
+Never infer tool availability from an Agent name. Check the capabilities that
+are actually available, select the smallest route that satisfies the output,
+and state any verification boundary. This keeps the canonical skills portable
+while still allowing host-specific setup commands in dedicated integration
+documentation.
+
 Representative skills:
 
 - Core research: `search`, `show`, `ingest`, `workspace`, `audit`, `translate`

@@ -50,7 +50,7 @@ description: Use when <明确触发场景>
 ---
 ```
 
-- 只使用 `name` 和 `description` 两个字段，兼容 Anthropic / Codex 的 skill 发现模型
+- 只使用 `name` 和 `description` 两个字段，兼容开放 Agent Skills 的发现模型
 - `name` 必须和目录名一致，只使用小写字母、数字、连字符
 - `description` 必须以 `Use when ` 开头，写触发条件和边界，不写执行流程
 - 其他展示、依赖、发布元数据放在外层 manifest（如 `clawhub.yaml` 或未来 `agents/openai.yaml`），不要塞进 `SKILL.md` frontmatter
@@ -78,6 +78,17 @@ description: Use when <明确触发场景>
 - skill 中所有代码块示例必须使用 canonical flag
 - 不允许出现历史别名（如 `--top`）
 
+### 2.6 按能力路由，不按 Agent 品牌路由
+- 共享 skill 先检查当前会话实际暴露的能力，再决定使用原生能力、ScholarAIO CLI 或可选扩展
+- 不得从 Agent / 宿主名称推断工具一定存在
+- 一次性理解与生成优先使用已存在的原生能力；持久化、可追溯、可复现或确定性文件交付使用 ScholarAIO 的测试契约
+- 宿主专用注册命令写在集成文档或外层 manifest，不写进共享 skill 的默认工作流
+
+### 2.7 渐进披露与长度
+- `SKILL.md` 只保留每次执行都需要的入口步骤、决策规则、gotchas 和验证门
+- 主文件不得超过 500 行；接近上限前，把格式/API 细节拆到同级 `references/` 并写清何时读取
+- 引用路径相对 skill 根目录，并从 `SKILL.md` 直接链接，避免多层引用链
+
 ---
 
 ## 3. 自动化校验（Validation）
@@ -95,6 +106,7 @@ python .claude/skills/_templates/validate_skills.py
 3. **frontmatter 不规范**：字段是否仅有 `name` / `description`，目录名是否匹配，description 是否以 `Use when ` 开头
 4. **破坏性操作无确认**：正文提到高风险操作但缺少 "确认" / "备份" / "dry-run" / "journal" 等防护关键字
 5. **无效 CLI 组合**：扫描已知的无效参数组合（如 `diagram --from-text ... --critic`）
+6. **上下文预算**：`SKILL.md` 不超过 500 行
 
 ### 3.2 集成到开发流程
 - 在新增/修改 skill 后，必须运行校验脚本
@@ -109,8 +121,10 @@ python .claude/skills/_templates/validate_skills.py
 | 2026-04-15 | `--top` vs `--limit` 不一致 | 统一规范名为 `--limit`，CLI 保留 `--top` 作为别名 | `--limit` 更直观，与 `explore fetch --limit` 及 API 惯例一致 |
 | 2026-04-15 | subagent 提示词质量参差 | 提取为 `_templates/` 共享模板 | 避免 copy-paste 退化，统一质量控制 |
 | 2026-04-15 | 硬编码绝对路径 | 禁止在 skill 中写机器相关路径 | 确保 skill 在不同环境（本地/插件/其他机器）可移植 |
-| 2026-04-25 | frontmatter 字段漂移 | `SKILL.md` frontmatter 收敛为 `name` + `description` | 与 Anthropic / Codex skill 发现模型一致，避免不同 agent 对扩展字段解释不一致 |
+| 2026-04-25 | frontmatter 字段漂移 | `SKILL.md` frontmatter 收敛为 `name` + `description` | 与开放 Agent Skills 发现模型一致，避免不同 agent 对扩展字段解释不一致 |
 | 2026-04-25 | 破坏性操作元数据分叉 | 高风险提示写在正文，不再依赖 `destructive` frontmatter | 入口 metadata 只负责发现，执行安全由正文步骤和测试约束 |
+| 2026-07-21 | 共享工作流按宿主名称分流 | 改为“实际能力 + 输出契约”路由 | 宿主名称不能证明工具存在；能力门控更可移植，也能给原生、核心 CLI 和外部扩展划清边界 |
+| 2026-07-21 | Office skill 接近 500 行 | 主 skill 保留决策与验证，把格式细节拆到一层 `references/` | 落实渐进披露，减少无关格式说明占用上下文 |
 
 ---
 

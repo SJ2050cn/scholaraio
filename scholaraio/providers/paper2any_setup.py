@@ -109,9 +109,15 @@ def serve_paper2any_backend(
 
 def _install_requirements(root: Path, venv_python: Path) -> None:
     requirements = [root / "requirements-base.txt", root / "requirements-paper.txt"]
+    missing = [path.name for path in requirements if not path.is_file()]
+    if missing:
+        names = ", ".join(missing)
+        raise Paper2AnySetupError(
+            f"Paper2Any checkout is missing required runtime manifests: {names}. "
+            "Update the checkout or choose a supported upstream ref."
+        )
     for path in requirements:
-        if path.exists():
-            _run([str(venv_python), "-m", "pip", "install", "-r", str(path)])
+        _run([str(venv_python), "-m", "pip", "install", "-r", str(path)])
 
 
 def _resolve_runtime_python(root: Path, requested_python: str = "") -> str:

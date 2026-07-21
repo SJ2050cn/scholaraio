@@ -43,7 +43,6 @@ _S: dict[str, dict[Lang, str]] = {
     "import_deps": {"en": "Import deps", "zh": "导入依赖"},
     "pdf_deps": {"en": "PDF deps", "zh": "PDF 依赖"},
     "office_deps": {"en": "Office deps", "zh": "Office 依赖"},
-    "draw_deps": {"en": "Draw deps", "zh": "绘图依赖"},
     "config_yaml": {"en": "config.yaml", "zh": "config.yaml"},
     "llm_key": {"en": "LLM API key", "zh": "LLM API key"},
     "mineru": {"en": "MinerU", "zh": "MinerU"},
@@ -352,7 +351,6 @@ _DEP_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("pptx", "python-pptx"),
         ("openpyxl", "openpyxl"),
     ],
-    "draw": [("mermaid", "mermaid-py"), ("cli_anything", "cli-anything-inkscape")],
 }
 
 _SPEC_ONLY_IMPORTS = {"sentence_transformers", "faiss", "numpy"}
@@ -371,7 +369,7 @@ def check_dep_group(group: str) -> DepGroupStatus:
     """Check if all packages in a dependency group are importable.
 
     Args:
-        group: Dependency group name (core/embed/topics/import/pdf/office/draw).
+        group: Dependency group name (core/embed/topics/import/pdf/office).
 
     Returns:
         DepGroupStatus with installed flag and list of missing pip package names.
@@ -451,7 +449,6 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
         ("import", "import_deps"),
         ("pdf", "pdf_deps"),
         ("office", "office_deps"),
-        ("draw", "draw_deps"),
     ]:
         status = check_dep_group(group)
         if status.installed:
@@ -958,7 +955,7 @@ def run_wizard(cfg: Config | None = None) -> None:
 
 def _wizard_deps(lang: Lang) -> None:
     """Check and optionally install missing dependency groups."""
-    for group in ("core", "embed", "topics", "import", "pdf", "office", "draw"):
+    for group in ("core", "embed", "topics", "import", "pdf", "office"):
         status = check_dep_group(group)
         label_key = f"{group}_deps"
         if status.installed:
