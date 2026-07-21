@@ -2,7 +2,48 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
 from scholaraio.core.log import ui as _default_ui
+
+_UNICODE_OUTPUT_PROBE = "中文✓→"
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _configure_windows_stdio() -> None:
+    """Prevent Unicode output crashes on legacy Windows text streams.
+
+    Modern Windows consoles already use UTF-8, while redirected streams and
+    legacy console mode may use an ANSI code page. Preserve Python's selected
+    encoding and relax only the error handler for streams that cannot encode
+    ScholarAIO's localized output. An explicit ``PYTHONIOENCODING`` remains
+    authoritative.
+    """
+    if not _is_windows() or "PYTHONIOENCODING" in os.environ:
+        return
+
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, "encoding", None)
+        errors = getattr(stream, "errors", None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not isinstance(encoding, str) or not callable(reconfigure):
+            continue
+        if not isinstance(errors, str):
+            errors = "strict"
+
+        try:
+            _UNICODE_OUTPUT_PROBE.encode(encoding, errors)
+        except LookupError:
+            continue
+        except UnicodeEncodeError:
+            try:
+                reconfigure(errors="replace")
+            except (OSError, TypeError, ValueError):
+                continue
 
 
 def _ui(message: str = "") -> None:
@@ -15,6 +56,8 @@ def _ui(message: str = "") -> None:
 
 
 def main() -> None:
+    _configure_windows_stdio()
+
     from scholaraio.interfaces.cli import compat as cli_mod
 
     parser = cli_mod._build_parser()
