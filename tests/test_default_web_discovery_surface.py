@@ -47,8 +47,10 @@ def test_default_cli_mcp_and_config_do_not_register_websearch() -> None:
 
 def test_paper2any_mcp_is_explicit_opt_in() -> None:
     mcp_config = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
+    setup_guide = (ROOT / "docs" / "getting-started" / "agent-setup.md").read_text(encoding="utf-8")
 
     assert "paper2any" not in mcp_config["mcpServers"]
+    assert "does not register Paper2Any" in setup_guide
 
 
 def test_agent_entry_docs_do_not_recommend_websearch() -> None:
