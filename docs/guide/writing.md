@@ -2,10 +2,11 @@
 
 ScholarAIO's writing support is organized as a small set of specialized skills plus one routing skill. These work best through an agent host that can load ScholarAIO skills; the examples below use Claude Code-style slash-skill names.
 
-The default is **Codex-native first** for reading, writing, ordinary diagrams,
-and presentation content. Use ScholarAIO runtime tooling when the workflow needs
-library provenance, persistent state, repeatable batch execution, or an exact
-DOCX/PPTX/XLSX artifact. Optional external generators are not the default route.
+The default is to use the current agent's native capabilities first for reading,
+writing, ordinary diagrams, and presentation content. Use ScholarAIO runtime
+tooling when the workflow needs library provenance, persistent state, repeatable
+batch execution, or an exact DOCX/PPTX/XLSX artifact. Optional external
+generators are not the default route.
 
 ## Start Here
 

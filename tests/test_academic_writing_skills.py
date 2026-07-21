@@ -90,11 +90,19 @@ def test_clawhub_registers_new_writing_skills() -> None:
         assert skills[fq_name]["path"] == f".claude/skills/{skill_name}"
 
 
-def test_common_agent_workflows_are_codex_native_first() -> None:
-    for skill_name in ("academic-writing", "paper-guided-reading", "draw", "document", "webextract"):
+def test_common_agent_workflows_use_current_agent_native_capabilities() -> None:
+    native_first_skills = ("academic-writing", "paper-guided-reading", "draw", "document", "webextract")
+    shared_skills = (*native_first_skills, "paper2any")
+
+    for skill_name in native_first_skills:
         content = _read(SKILLS_DIR / skill_name / "SKILL.md")
 
-        assert "Codex-native first" in content, f"{skill_name} must declare the native-first contract"
+        assert "当前 Agent 原生能力优先" in content, f"{skill_name} must declare the native-first contract"
+
+    for skill_name in shared_skills:
+        content = _read(SKILLS_DIR / skill_name / "SKILL.md")
+
+        assert "Codex" not in content, f"{skill_name} must remain portable across agent hosts"
 
 
 def test_paper2any_stays_an_isolated_benchmark_gated_extension() -> None:

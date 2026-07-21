@@ -7,13 +7,13 @@ description: Use when the user wants to create or inspect DOCX, PPTX, or XLSX fi
 
 ## Native-First Policy
 
-**Codex-native first**：报告正文、演示故事线、逐页标题与要点、普通图表和版式方案默认由 Codex 完成。只有用户明确要求可下载、可复现的 `DOCX/PPTX/XLSX` 文件时，才调用下述 Office API 进行确定性封装和 `scholaraio document inspect` 检查；普通演示稿不得自动转交 Paper2Any。
+**当前 Agent 原生能力优先**：报告正文、演示故事线、逐页标题与要点、普通图表和版式方案默认由当前使用的 Agent 原生能力完成。只有用户明确要求可下载、可复现的 `DOCX/PPTX/XLSX` 文件时，才调用下述 Office API 进行确定性封装和 `scholaraio document inspect` 检查；普通演示稿不得自动转交 Paper2Any。
 
 直接用 Python API 生成 Word / PowerPoint / Excel 文档，并通过 `scholaraio document inspect` 检查文档结构和布局。
 
 ## 核心思路
 
-**生成**：不要用 `scholaraio export docx`（那个只是简单的 Markdown 转换器）。Codex 先完成内容与版式设计；需要确定性 Office 文件时，本 skill 再直接编写 Python 脚本调用 Office 库 API。
+**生成**：不要用 `scholaraio export docx`（那个只是简单的 Markdown 转换器）。当前使用的 Agent 先完成内容与版式设计；需要确定性 Office 文件时，本 skill 再直接编写 Python 脚本调用 Office 库 API。
 
 **检查**：生成后必须用 `scholaraio document inspect <file>` 检查文档，确认布局、内容、图片尺寸无误，再交付给用户。
 

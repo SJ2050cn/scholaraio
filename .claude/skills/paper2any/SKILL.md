@@ -9,9 +9,9 @@ Paper2Any 是外部项目 [OpenDCAI/Paper2Any](https://github.com/OpenDCAI/Paper
 
 ## 隔离与晋级边界
 
-Paper2Any 是 **isolated extension**，不是 ScholarAIO 或 Codex 的默认生成路径。
+Paper2Any 是 **isolated extension**，不是 ScholarAIO 或当前 Agent 的默认生成路径。
 
-- 普通网页检索、论文阅读、写作、图表和演示稿由 Codex-native first 路径完成。
+- 普通网页检索、论文阅读、写作、图表和演示稿优先由当前使用的 Agent 原生能力完成。
 - 只有用户明确要求 Paper2Any，或正在执行 Paper2Any 对比评测时，才运行本 skill；不要为普通 PPT、海报、rebuttal 或图表自动执行 `setup`。
 - checkout、虚拟环境、MCP sidecar、FastAPI 后端和输出目录继续与 ScholarAIO 基础运行时隔离。
 - 在提升为默认或一等能力之前，必须完成 **fixed-corpus** 对比，至少记录事实准确性、可编辑性、版式质量、延迟、成本、安装负担和失败降级行为。

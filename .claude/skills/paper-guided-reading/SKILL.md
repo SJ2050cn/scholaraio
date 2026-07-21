@@ -8,7 +8,7 @@ description: Use when the user wants guided reading, deep reading, or structured
 
 ## 核心原则
 
-- **Codex-native first**：附件或当前会话可直接读取的论文由 Codex 先行阅读和分析；只有需要本地库解析、分层内容、持久笔记或可追溯元数据时才调用 ScholarAIO CLI，不为普通精读自动转交外部服务。
+- **当前 Agent 原生能力优先**：附件或当前会话可直接读取的论文由当前使用的 Agent 原生能力先行阅读和分析；只有需要本地库解析、分层内容、持久笔记或可追溯元数据时才调用 ScholarAIO CLI，不为普通精读自动转交外部服务。
 - **不写完整报告**：分析结果以结构化对话要点呈现，不生成长篇 Markdown 报告文件。
 - **先检索、后确认、再精读**：避免在信息模糊时直接假设目标论文。
 - **证据先行**：所有论断必须基于原文（L4 全文、图表、公式）。

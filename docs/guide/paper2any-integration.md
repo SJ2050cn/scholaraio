@@ -6,11 +6,11 @@ ScholarAIO integrates [OpenDCAI/Paper2Any](https://github.com/OpenDCAI/Paper2Any
 2. a lightweight ScholarAIO MCP sidecar at `http://127.0.0.1:8770/mcp`;
 3. optional access to Paper2Any's own FastAPI backend at `http://127.0.0.1:8000`.
 
-Paper2Any is an isolated, explicit opt-in extension. Codex remains the default
-for ordinary web research, paper reading, writing, diagrams, and presentation
-generation. Paper2Any must not be promoted to a default path until a fixed-corpus
-comparison records accuracy, editability, layout quality, latency, cost, setup
-burden, and degradation behavior.
+Paper2Any is an isolated, explicit opt-in extension. The current agent's native
+capabilities remain the default for ordinary web research, paper reading,
+writing, diagrams, and presentation generation. Paper2Any must not be promoted
+to a default path until a fixed-corpus comparison records accuracy, editability,
+layout quality, latency, cost, setup burden, and degradation behavior.
 
 ## Configuration
 

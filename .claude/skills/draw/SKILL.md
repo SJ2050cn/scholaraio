@@ -7,7 +7,7 @@ description: Use when the user wants diagrams, flowcharts, architecture visuals,
 
 ## Native-First Policy
 
-**Codex-native first**：普通流程图、架构图、关系图和演示用示意图，优先由 Codex 直接生成 Mermaid、DOT、SVG 或宿主支持的图片。只有需要从 ScholarAIO 论文库提取结构、保存 IR、批量复现或生成可继续编辑的 drawio 文件时，才调用 `scholaraio diagram`。不要为普通绘图安装额外 Python 绘图库。
+**当前 Agent 原生能力优先**：普通流程图、架构图、关系图和演示用示意图，优先由当前使用的 Agent 原生能力生成 Mermaid、DOT、SVG 或宿主支持的图片。只有需要从 ScholarAIO 论文库提取结构、保存 IR、批量复现或生成可继续编辑的 drawio 文件时，才调用 `scholaraio diagram`。不要为普通绘图安装额外 Python 绘图库。
 
 `draw` skill 的核心工作流是**两步式**：先将文字描述或论文内容转换为统一的中间表示（IR），再将 IR 渲染为多种可编辑格式。
 
@@ -18,7 +18,7 @@ description: Use when the user wants diagrams, flowcharts, architecture visuals,
 | 快速画流程图/架构图，零依赖预览 | **Mermaid** | `.mermaid` / 嵌入 Markdown | 文本即代码，GitHub/Obsidian/Claude Code 原生渲染 |
 | 论文插图，LaTeX Beamer 直插 | **Graphviz SVG** | `.svg` + `.dot` 源码 | 矢量图，可版本控制，`<?xml>` 级精确 |
 | 在线协作/精调布局 | **drawio** | `.drawio` XML | 导入 [diagrams.net](https://app.diagrams.net) 后手动拖拽调整 |
-| 自定义实验示意图、信息图 | **Codex 直接生成 SVG/图片** | `.svg` / `.png` | 普通场景零新增 Python 依赖 |
+| 自定义实验示意图、信息图 | **当前 Agent 直接生成 SVG/图片** | `.svg` / `.png` | 普通场景零新增 Python 依赖 |
 | 程序化批处理、版本控制 | **Graphviz DOT** | `.dot` | 纯文本，Diff 友好，任何平台可编译 |
 
 ## 工作流架构
@@ -84,7 +84,7 @@ flowchart TD
 ```
 ```
 
-Codex 和支持 Mermaid 的宿主可直接预览，无需任何 Python 渲染依赖。
+支持 Mermaid 的当前 Agent 宿主可直接预览，无需任何 Python 渲染依赖。
 
 ## 各后端详细用法
 
@@ -169,7 +169,7 @@ scholaraio diagram <paper-id> --format mermaid -o workspace/_system/figures/
 → 若无论文：根据描述生成 IR → Mermaid flowchart
 
 用户说："帮我画一个实验装置示意图"
-→ Codex 直接生成可编辑 SVG；只在用户明确需要照片式或插画式结果时使用宿主图片生成能力
+→ 当前 Agent 直接生成可编辑 SVG；只在用户明确需要照片式或插画式结果时使用宿主图片生成能力
 
 用户说："把这个 Mermaid 代码转成 SVG"
 → 解析为 IR → `render_ir(ir, "svg")`
