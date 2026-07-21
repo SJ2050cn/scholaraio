@@ -1,9 +1,9 @@
 # Rendered Web Extraction (Optional)
 
-ScholarAIO is agent-first: ordinary web discovery and reading should use the
-host agent's native web capabilities. ScholarAIO's optional web integration is
-limited to producing rendered, ingestion-ready content from a URL when native
-reading is insufficient.
+ScholarAIO is Codex-native first: ordinary web discovery, source verification,
+and reading should use Codex's native web capabilities. ScholarAIO's optional
+web integration is limited to producing rendered, ingestion-ready content from
+a URL when native reading is insufficient.
 
 ## When to use this
 
@@ -15,8 +15,7 @@ Use the external `qt-web-extractor` integration only when:
 - native URL reading failed and a rendered Markdown representation is required.
 
 Do not use it for routine web discovery, current-information lookup, or normal
-page reading. Those tasks belong to the host agent's native web search and URL
-tools.
+page reading. Those tasks belong to Codex's native web search and URL tools.
 
 ## Native ScholarAIO entrypoint
 

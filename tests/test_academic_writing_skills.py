@@ -88,3 +88,17 @@ def test_clawhub_registers_new_writing_skills() -> None:
         fq_name = f"scholaraio/{skill_name}"
         assert fq_name in skills
         assert skills[fq_name]["path"] == f".claude/skills/{skill_name}"
+
+
+def test_common_agent_workflows_are_codex_native_first() -> None:
+    for skill_name in ("academic-writing", "paper-guided-reading", "draw", "document", "webextract"):
+        content = _read(SKILLS_DIR / skill_name / "SKILL.md")
+
+        assert "Codex-native first" in content, f"{skill_name} must declare the native-first contract"
+
+
+def test_paper2any_stays_an_isolated_benchmark_gated_extension() -> None:
+    content = _read(SKILLS_DIR / "paper2any" / "SKILL.md")
+
+    assert "isolated extension" in content
+    assert "fixed-corpus" in content

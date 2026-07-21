@@ -124,7 +124,7 @@ skills:
 
   - name: scholaraio/draw
     path: .claude/skills/draw
-    description: "Generate diagrams (Mermaid flowcharts, sequence, ER, Gantt, mind maps) and vector graphics (cli-anything-inkscape)"
+    description: "Generate diagrams with Codex-native Mermaid, Graphviz, SVG, and editable DrawIO workflows"
 
   - name: scholaraio/document
     path: .claude/skills/document

@@ -6,6 +6,10 @@ description: Use when the user needs help choosing or organizing an academic-wri
 
 Route academic-writing requests to the right specialized skill with minimal overlap.
 
+## Native-First Policy
+
+**Codex-native first**：检索后的理解、论文阅读、学术写作、演示文稿结构和逐页内容，默认由 Codex 直接完成。只有用户需要确定性的 `DOCX/PPTX/XLSX` 文件时才接 `/document`；不要为了普通写作或普通 PPT 自动启动外部生成服务。
+
 ## Purpose
 
 This skill is the **entry point** for users who know what they want to produce, but do not know which writing workflow to use.

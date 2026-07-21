@@ -45,6 +45,12 @@ def test_default_cli_mcp_and_config_do_not_register_websearch() -> None:
     assert "websearch" not in setup_config
 
 
+def test_paper2any_mcp_is_explicit_opt_in() -> None:
+    mcp_config = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
+
+    assert "paper2any" not in mcp_config["mcpServers"]
+
+
 def test_agent_entry_docs_do_not_recommend_websearch() -> None:
     forbidden = ("websearch", "web-search")
     for path in (ROOT / "AGENTS.md", ROOT / "AGENTS_CN.md"):
