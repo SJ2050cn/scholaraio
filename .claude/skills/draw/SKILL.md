@@ -5,9 +5,9 @@ description: Use when the user wants diagrams, flowcharts, architecture visuals,
 
 # 绘图工具（Text → IR → Diagram）
 
-## Native-First Policy
+## Capability Routing
 
-**当前 Agent 原生能力优先**：普通流程图、架构图、关系图和演示用示意图，优先由当前使用的 Agent 原生能力生成 Mermaid、DOT、SVG 或宿主支持的图片。只有需要从 ScholarAIO 论文库提取结构、保存 IR、批量复现或生成可继续编辑的 drawio 文件时，才调用 `scholaraio diagram`。不要为普通绘图安装额外 Python 绘图库。
+**当前 Agent 原生能力优先，但必须先做能力检查**：按所需输出格式和可复现性路由，不按 Agent 品牌路由。若当前会话实际提供 Mermaid、DOT、SVG 或图片生成能力，就由当前使用的 Agent 原生能力完成普通流程图、架构图、关系图和演示示意图。只有需要从 ScholarAIO 论文库提取结构、保存 IR、批量复现或生成可继续编辑的 drawio 文件时，才调用 `scholaraio diagram`。不要为普通绘图安装额外 Python 绘图库。
 
 `draw` skill 的核心工作流是**两步式**：先将文字描述或论文内容转换为统一的中间表示（IR），再将 IR 渲染为多种可编辑格式。
 
@@ -15,7 +15,7 @@ description: Use when the user wants diagrams, flowcharts, architecture visuals,
 
 | 需求 | 推荐后端 | 输出格式 | 特点 |
 |------|----------|----------|------|
-| 快速画流程图/架构图，零依赖预览 | **Mermaid** | `.mermaid` / 嵌入 Markdown | 文本即代码，GitHub/Obsidian/Claude Code 原生渲染 |
+| 快速画流程图/架构图，零依赖预览 | **Mermaid** | `.mermaid` / 嵌入 Markdown | 文本即代码，常见 Markdown 宿主可直接渲染 |
 | 论文插图，LaTeX Beamer 直插 | **Graphviz SVG** | `.svg` + `.dot` 源码 | 矢量图，可版本控制，`<?xml>` 级精确 |
 | 在线协作/精调布局 | **drawio** | `.drawio` XML | 导入 [diagrams.net](https://app.diagrams.net) 后手动拖拽调整 |
 | 自定义实验示意图、信息图 | **当前 Agent 直接生成 SVG/图片** | `.svg` / `.png` | 普通场景零新增 Python 依赖 |

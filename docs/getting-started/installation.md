@@ -11,7 +11,7 @@
 # Core installation
 pip install scholaraio
 
-# Full installation (embed + topics + import + pdf + office + draw)
+# Full installation (embed + topics + import + pdf + office)
 pip install "scholaraio[full]"
 ```
 
@@ -30,7 +30,7 @@ cd scholaraio
 # Core only (search, export, audit)
 pip install -e .
 
-# Full installation (embed + topics + import + pdf + office + draw)
+# Full installation (embed + topics + import + pdf + office)
 pip install -e ".[full]"
 ```
 
@@ -45,9 +45,13 @@ Use the source install path when you want to inspect the codebase, edit the pack
 | `pdf` | PyMuPDF-based PDF fallback and long-PDF utilities |
 | `import` | Endnote / Zotero import |
 | `office` | DOCX / PPTX / XLSX ingest and inspection |
-| `draw` | Python helpers for Mermaid and custom SVG drawing; Graphviz `dot` and Inkscape are system tools checked by `setup check` |
-| `full` | Core research workflow extras: embed + topics + import + pdf + office + draw |
+| `full` | Core research workflow extras: embed + topics + import + pdf + office |
 | `dev` | Development tools (pytest, ruff, mypy) |
+
+Diagram generation does not need a Python `draw` extra: Mermaid, DOT, and
+drawio source generation are part of the core package. SVG rendering requires
+the Graphviz `dot` system executable, and Beamer SVG inclusion may require
+Inkscape; check both with `scholaraio setup check`.
 
 ## Setup Wizard
 

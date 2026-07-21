@@ -60,7 +60,13 @@ For agent-managed full runtime preparation, add:
 scholaraio paper2any setup --install-runtime
 ```
 
-This creates the upstream checkout under `data/runtime/extensions/paper2any/Paper2Any` and, when requested, installs upstream requirements into `data/runtime/extensions/paper2any/.venv`. The dependency details stay in Paper2Any's own requirements files; the user-facing ScholarAIO config stays small.
+This creates the upstream checkout under `data/runtime/extensions/paper2any/Paper2Any` and, when requested, installs the upstream `requirements-base.txt` and `requirements-paper.txt` into `data/runtime/extensions/paper2any/.venv`. If either manifest is absent, setup fails closed and asks you to update or select a supported checkout instead of reporting an empty runtime as ready. The dependency details stay in Paper2Any's own requirements files; the user-facing ScholarAIO config stays small.
+
+`--install-runtime` installs Python dependencies only. Paper2Any's current
+upstream installation guide lists workflow-dependent system tools such as
+LibreOffice, Inkscape, Poppler, FFmpeg, wkhtmltopdf, and Tectonic; install only
+the tools required by the workflow you intend to benchmark. ScholarAIO does not
+silently modify the host OS.
 
 Start the MCP sidecar:
 

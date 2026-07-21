@@ -56,8 +56,8 @@ def test_unowned_draw_packages_are_not_published_or_recommended():
     for requirements in optional.values():
         all_requirements.extend(requirements)
 
-    assert optional["draw"] == []
-    assert "scholaraio[draw]" in optional["full"]
+    assert "draw" not in optional
+    assert "scholaraio[draw]" not in optional["full"]
     assert not any(requirement.startswith("mermaid-py") for requirement in all_requirements)
     assert not any(requirement.startswith("cli-anything-inkscape") for requirement in all_requirements)
     assert "scholaraio[draw]" not in install_script
