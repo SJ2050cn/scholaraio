@@ -60,10 +60,7 @@ office = [
     "python-pptx>=1.0",
     "openpyxl>=3.1",
 ]
-draw = [
-    "cli-anything-inkscape>=1.0.0",
-    "mermaid-py>=0.3",
-]
+draw = []
 full = [
     "scholaraio[embed]",
     "scholaraio[topics]",

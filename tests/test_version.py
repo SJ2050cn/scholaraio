@@ -43,3 +43,18 @@ def test_mineru_open_api_dependency_uses_current_cli_floor():
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
 
     assert "mineru-open-api>=0.5.9" in data["project"]["dependencies"]
+
+
+def test_unowned_draw_packages_are_not_published_dependencies():
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+
+    optional = data["project"]["optional-dependencies"]
+    all_requirements = [*data["project"]["dependencies"]]
+    for requirements in optional.values():
+        all_requirements.extend(requirements)
+
+    assert optional["draw"] == []
+    assert "scholaraio[draw]" in optional["full"]
+    assert not any(requirement.startswith("mermaid-py") for requirement in all_requirements)
+    assert not any(requirement.startswith("cli-anything-inkscape") for requirement in all_requirements)
