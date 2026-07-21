@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Windows Unicode stdio fallback** ([#124](https://github.com/ZimoLiao/scholaraio/pull/124)): Prevented localized CLI output from crashing on legacy Windows console, file, or pipe encodings by relaxing only the affected stream error handlers, while preserving non-Windows behavior and explicit `PYTHONIOENCODING` settings.
+- **Windows Unicode stdio fallback** ([#126](https://github.com/ZimoLiao/scholaraio/pull/126); original report and patch [#124](https://github.com/ZimoLiao/scholaraio/pull/124)): Prevented localized CLI output from crashing on legacy Windows console, file, or pipe encodings by relaxing only the affected stream error handlers, while preserving non-Windows behavior and explicit `PYTHONIOENCODING` settings.
 - **Windows setup-check console compatibility** ([#113](https://github.com/ZimoLiao/scholaraio/pull/113)): Replaced non-cp1252 status symbols in the default English `setup check` output so Windows consoles no longer raise `UnicodeEncodeError` during final verification.
 - **Webextract Markdown table-cell cleanup** ([#110](https://github.com/ZimoLiao/scholaraio/pull/110)): Sanitized malformed block-level code fences emitted inside `qt-web-extractor` table cells before HTTP/MCP extraction results reach `webextract` and ingest consumers, while preserving standalone fenced code blocks and pipe characters inside code-cell content.
 
